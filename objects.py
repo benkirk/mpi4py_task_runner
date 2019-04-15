@@ -3,36 +3,51 @@
 from mpi4py import MPI
 import numpy as np
 import time
+import tarfile
 
 
-
-################
-class MPIObject:
+################################################################################
+class MPIClass:
 
     tags ={ 'ready'     : 1,
             'terminate' : 1000 }
 
-    def __init__(self):
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __init__(self,options=None):
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
+        self.options = self.comm.bcast(options)
 
-
-
-########################
-class Master(MPIObject):
-
-    def __init__(self):
-        MPIObject.__init__(self)
-        self.size = self.comm.Get_size()
-        self.iteration=0
         return
 
+
+
+################################################################################
+class Master(MPIClass):
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __init__(self,options=None):
+        MPIClass.__init__(self,options)
+
+        self.iteration=0
+
+        # process options
+        # (none)
+
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def finished(self):
         if self.iteration == 200:
             return True
         self.iteration += 1
         return False;
 
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
         status = MPI.Status()
         instruct = None
@@ -45,7 +60,7 @@ class Master(MPIObject):
             print("Running step {} on rank {}".format(self.iteration,status.Get_source()))
 
         # cleanup loop, send 'terminate' tag to each slave rank
-        for s in range(1,self.size):
+        for s in range(1,self.comm.Get_size()):
             self.comm.recv(result,   source=s, tag=self.tags['ready'], status=status)
             self.comm.send(instruct, dest=s,   tag=self.tags['terminate'])
             print("  --> Terminating rank {}".format(status.Get_source()))
@@ -54,20 +69,33 @@ class Master(MPIObject):
 
 
 
-########################
-class Slave(MPIObject):
+################################################################################
+class Slave(MPIClass):
 
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
-        MPIObject.__init__(self)
+        MPIClass.__init__(self)
+
         self.instruct = None;
         self.result = None;
+        self.tar = None;
+
+        # process options
+        if "archive" in self.options: self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
+
         return
 
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run_serial_task(self):
         self.result = None;
         time.sleep (np.random.random_sample())
         return
 
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
         status = MPI.Status()
         while True:

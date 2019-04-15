@@ -8,10 +8,13 @@ rank = comm.Get_rank()
 size = comm.Get_size()
 assert size > 1
 
-if rank == 0:
-    master = Master()
-    master.run()
-
-else:
+# slaves on ranks [1,size)
+if rank:
     slave = Slave()
     slave.run()
+
+# master on rank 0
+else:
+    options = set(['archive'])
+    master = Master(options)
+    master.run()
