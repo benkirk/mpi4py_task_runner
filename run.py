@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 from mpi4py import MPI
-from objects import Master, Slave
+from master import Master
+from slave import Slave
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -15,6 +16,10 @@ if rank:
 
 # master on rank 0
 else:
-    options = set(['archive'])
+    options = {
+        '#archive'    : None, # create per-rank tarfiles
+        'runlocal'  : None  # run locally when possible
+    }
+
     master = Master(options)
     master.run()
