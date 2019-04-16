@@ -12,11 +12,11 @@ export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python3.6/s
 #  module load openmpi/1.10.4
 #  export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python2.7/site-packages
 
-# default (CentOS 7) python2
-module purge
-module load gcc slurm
-module load openmpi/1.10.4
-export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python2.7/site-packages
+# # default (CentOS 7) python2
+# module purge
+# module load gcc slurm
+# module load openmpi/1.10.4
+# export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python2.7/site-packages
 
 
 
