@@ -36,7 +36,9 @@ class MPIClass:
         self.rundir = os.getcwd()
 
         # get specified local temporary directory, if exists
-        local_topdir = os.getenv('SLURM_JOB_LOCAL_TMPDIR')
+        local_topdir = None
+        if not local_topdir: local_topdir = os.getenv('SLURM_JOB_TMPFS_TMPDIR')
+        if not local_topdir: local_topdir = os.getenv('SLURM_JOB_LOCAL_TMPDIR')
 
         self.local_rankdir = tempfile.mkdtemp(prefix="rank{}_".format(self.rank),
                                               dir=local_topdir)
