@@ -24,24 +24,7 @@ class Slave(MPIClass):
         # process options. open any files thay belong in shared run directory.
         if "archive" in self.options: self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
 
-        self.setup_local_rundir()
         return
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __del__(self):
-        if self.local_rankdir:
-            os.chdir(self.local_rankdir)
-        return
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def setup_local_rundir(self):
-        if self.local_rankdir:
-            os.chdir(self.local_rankdir)
-        return;
 
 
 
@@ -57,7 +40,7 @@ class Slave(MPIClass):
             os.chdir(self.local_rankdir)
             if self.tar:
                 self.tar.add(self.instruct)
-            shutil.rmtree(stepdir)
+            shutil.rmtree(stepdir,ignore_errors=True)
         return
 
 
@@ -75,7 +58,8 @@ class Slave(MPIClass):
             self.instruct = go.wait(status=status)
             #print(self.instruct)
 
-            if status.Get_tag() == self.tags['terminate']: return;
+            if status.Get_tag() == self.tags['terminate']:
+                return;
 
             #print("  got {} on rank {}".format(self.instruct,self.rank))
             self.run_serial_task()

@@ -25,8 +25,7 @@ class MPIClass:
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __del__(self):
-        os.chdir(self.rundir)
-        if self.local_rankdir: shutil.rmtree(self.local_rankdir)
+        self.cleanup()
         return
 
 
@@ -37,10 +36,20 @@ class MPIClass:
         self.rundir = os.getcwd()
 
         # get specified local temporary directory, if exists
-        local_topdir = os.getenv('SLURM_JOB_TMPDIR')
+        local_topdir = os.getenv('SLURM_JOB_LOCAL_TMPDIR')
 
         self.local_rankdir = tempfile.mkdtemp(prefix="rank{}_".format(self.rank),
                                               dir=local_topdir)
 
         print(" Rank {} using local directory {}".format(self.rank, self.local_rankdir))
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def cleanup(self):
+        if self.local_rankdir:
+            os.chdir(self.rundir)
+            shutil.rmtree(self.local_rankdir,ignore_errors=True)
+            self.local_rankdir = None
         return

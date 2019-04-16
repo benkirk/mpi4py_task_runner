@@ -24,7 +24,7 @@ class Master(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def finished(self):
-        if self.iteration == 20:
+        if self.iteration == 200:
             return True
         self.iteration += 1
         return False;
