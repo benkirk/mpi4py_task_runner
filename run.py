@@ -16,10 +16,7 @@ if rank:
 
 # master on rank 0
 else:
-    options = {
-        '#archive'    : None, # create per-rank tarfiles
-        'runlocal'  : None  # run locally when possible
-    }
+    options = set(['archive'])
 
     master = Master(options)
     master.run()

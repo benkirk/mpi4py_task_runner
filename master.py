@@ -24,7 +24,7 @@ class Master(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def finished(self):
-        if self.iteration == 200:
+        if self.iteration == 20:
             return True
         self.iteration += 1
         return False;
@@ -40,7 +40,7 @@ class Master(MPIClass):
         # execution loop
         while not self.finished():
             self.comm.recv(result,   source=MPI.ANY_SOURCE,    tag=self.tags['ready'], status=status)
-            instruct = self.iteration
+            instruct = "step_{:05d}".format(self.iteration)
             self.comm.send(instruct, dest=status.Get_source(), tag=self.tags['ready'])
             print("Running step {} on rank {}".format(self.iteration,status.Get_source()))
 

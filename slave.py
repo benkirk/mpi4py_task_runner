@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 from mpi4py import MPI
+from mpiclass import MPIClass
 import numpy as np
 import time
 import tarfile
 import os
-from mpiclass import MPIClass
-
+import shutil
+from write_rand_data import *
 
 
 ################################################################################
@@ -27,8 +28,19 @@ class Slave(MPIClass):
         return
 
 
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __del__(self):
+        if self.local_rankdir:
+            os.chdir(self.local_rankdir)
+        return
+
+
+
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def setup_local_rundir(self):
+        if self.local_rankdir:
+            os.chdir(self.local_rankdir)
         return;
 
 
@@ -36,7 +48,16 @@ class Slave(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run_serial_task(self):
         self.result = None;
-        time.sleep (np.random.random_sample())
+        if self.local_rankdir and self.instruct:
+            stepdir="{}/{}".format(self.local_rankdir, self.instruct)
+            os.mkdir(stepdir)
+            os.chdir(stepdir)
+            time.sleep (np.random.random_sample())
+            write_rand_data()
+            os.chdir(self.local_rankdir)
+            if self.tar:
+                self.tar.add(self.instruct)
+            shutil.rmtree(stepdir)
         return
 
 
@@ -52,6 +73,7 @@ class Slave(MPIClass):
             # receive instructions from Master
             go = self.comm.irecv(source=0, tag=MPI.ANY_TAG)
             self.instruct = go.wait(status=status)
+            #print(self.instruct)
 
             if status.Get_tag() == self.tags['terminate']: return;
 
