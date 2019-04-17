@@ -39,7 +39,8 @@ class Master(MPIClass):
 
         # execution loop
         while not self.finished():
-            self.comm.recv(result,   source=MPI.ANY_SOURCE,    tag=self.tags['ready'], status=status)
+            result = self.comm.recv(source=MPI.ANY_SOURCE,    tag=self.tags['ready'], status=status)
+            if result: print(result)
             instruct = "step_{:05d}".format(self.iteration)
             self.comm.send(instruct, dest=status.Get_source(), tag=self.tags['ready'])
             print("Running step {} on rank {}".format(self.iteration,status.Get_source()))
@@ -47,7 +48,7 @@ class Master(MPIClass):
         # cleanup loop, send 'terminate' tag to each slave rank
         print("  --> Terminating ranks")
         for s in range(1,self.comm.Get_size()):
-            self.comm.recv(result,   source=s, tag=self.tags['ready'], status=status)
-            self.comm.send(instruct, dest=s,   tag=self.tags['terminate'])
+            self.comm.recv(source=s, tag=self.tags['ready'], status=status)
+            self.comm.send(None, dest=s, tag=self.tags['terminate'])
 
         return

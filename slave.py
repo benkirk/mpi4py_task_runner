@@ -61,5 +61,8 @@ class Slave(MPIClass):
             if status.Get_tag() == self.tags['terminate']:
                 return;
 
-            #print("  got {} on rank {}".format(self.instruct,self.rank))
+            tstart = MPI.Wtime()
             self.run_serial_task()
+            self.result = "  rank {} completed {} in {} sec.".format(self.rank,
+                                                                     self.instruct,
+                                                                     MPI.Wtime() - tstart)
