@@ -6,6 +6,29 @@ Tool to launch serial processes on a cluster and aggregate results, using mpi4py
 <a name="headers"/>
 
 ## FSL
+### quickstart
+```bash
+# on a login node
+mkdir /nobackup/$USER/codes
+cd /nobackup/$USER/codes
+git clone https://github.com/benkirk/mpi4py_task_runner.git
+cd mpi4py_task_runner/
+git checkout -b 0.1.0 v0.1.0
+srun -n 80 --pty /bin/bash  # grab an interactive SLURM session on 80 cores
+
+# then in the interactive shell
+. utils/config_env_fsl.sh
+mpiexec ./run.py
+exit
+
+# back on the login node
+make list
+# only if you really need to!!
+make extract 
+
+# cleanup
+git clean -xdf .
+```
 ### Configure Environment
 ```bash
 # Anaconda 3-5.0.1; python3
