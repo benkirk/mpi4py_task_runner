@@ -14,7 +14,7 @@ class Master(MPIClass):
         MPIClass.__init__(self,options)
 
         self.iteration=0
-
+        self.niter = 10*self.comm.Get_size()
         # process options
         # (none)
 
@@ -24,7 +24,7 @@ class Master(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def finished(self):
-        if self.iteration == 200:
+        if self.iteration == self.niter:
             return True
         self.iteration += 1
         return False;
