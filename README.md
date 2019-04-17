@@ -1,6 +1,6 @@
 # mpi4py_task_runner
 Tool to launch serial processes on a cluster and aggregate results, using mpi4py
-##### Table of Contents  
+## Table of Contents  
 [FSL](#FSL)  
 [europa](#europa)  
 <a name="headers"/>
@@ -14,8 +14,6 @@ Tool to launch serial processes on a cluster and aggregate results, using mpi4py
  module load anaconda/3-5.0.1
  module load openmpi/1.10.4
  export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python3.6/site-packages
- which mpiexec
- which python
  
 # Anaconda 4.2.0; python2
  module purge
@@ -23,16 +21,17 @@ Tool to launch serial processes on a cluster and aggregate results, using mpi4py
  module load anaconda/4.2.0
  module load openmpi/1.10.4
  export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python2.7/site-packages
- which mpiexec
- which python
  
  # default (CentOS 7) python2
  module purge
  module load gcc slurm
  module load openmpi/1.10.4
  export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python2.7/site-packages
- which mpiexec
- which python
+
+#####################
+echo $PYTHONPATH
+which mpiexec
+which python
  ```
  ### Execution
  ```bash
@@ -55,8 +54,6 @@ module load gcc slurm
 module load anaconda/3-5.0.1
 module load mpt
 export PYTHONPATH=/software/x86_64/mpi4py/3.0.1-${MPI_ID_STRING}/lib/python3.6/site-packages
-
-
 
 #####################
 echo $PYTHONPATH
