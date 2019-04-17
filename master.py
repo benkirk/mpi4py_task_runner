@@ -39,7 +39,7 @@ class Master(MPIClass):
 
         # execution loop
         while not self.finished():
-            result = self.comm.recv(source=MPI.ANY_SOURCE,    tag=self.tags['ready'], status=status)
+            result = self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status)
             if result: print(result)
             instruct = "step_{:05d}".format(self.iteration)
             self.comm.send(instruct, dest=status.Get_source(), tag=self.tags['ready'])
