@@ -46,6 +46,7 @@ which python
 ```
 
 ## europa
+### Configure Environment
 ```bash
 ### Configure Environment
 # Anaconda 3-5.0.1; python3
@@ -61,7 +62,7 @@ which mpiexec
 which python
 ```
 
-## Execution
+### Execution
 ```bash
 srun -n 64 --constraint=sky --pty /bin/bash -l # get an interactive shell, 2 nodes, 32 cores ea.
 . utils/config_env_fsl.sh
