@@ -54,9 +54,15 @@ class Master(MPIClass):
         # whatever order they become ready.
         # Don't forget to catch their final 'result'
         print("  --> Finished dispatch, Terminating ranks")
+        requests = []
         for s in range(1,self.comm.Get_size()):
             result = self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status)
             if result: print(result)
-            self.comm.send(None, dest=status.Get_source(), tag=self.tags['terminate'])
+            # send terminate tag, but no need to wait
+            requests.append(
+                self.comm.isend(None, dest=status.Get_source(), tag=self.tags['terminate']))
+
+        # OK, messages sent, wait for all to complete
+        MPI.Request.waitall(requests)
 
         return
