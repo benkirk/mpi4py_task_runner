@@ -42,8 +42,6 @@ class MPIClass:
 
         self.local_rankdir = tempfile.mkdtemp(prefix="rank{}_".format(self.rank),
                                               dir=local_topdir)
-
-        print(" Rank {} using local directory {}".format(self.rank, self.local_rankdir))
         return
 
 

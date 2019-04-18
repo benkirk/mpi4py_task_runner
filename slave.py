@@ -18,8 +18,9 @@ class Slave(MPIClass):
         MPIClass.__init__(self)
 
         self.instruct = None;
-        self.result = None;
         self.tar = None;
+        # on first call, have master print our local config
+        self.result = " Rank {} using local directory {}".format(self.rank, self.local_rankdir)
 
         # process options. open any files thay belong in shared run directory.
         if "archive" in self.options: self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
@@ -50,16 +51,12 @@ class Slave(MPIClass):
         status = MPI.Status()
         while True:
             # signal Master we are ready for the next task
-            ready = self.comm.isend(self.result, dest=0, tag=self.tags['ready'])
-            ready.wait()
+            self.comm.isend(self.result, dest=0, tag=self.tags['ready'])
 
             # receive instructions from Master
-            go = self.comm.irecv(source=0, tag=MPI.ANY_TAG)
-            self.instruct = go.wait(status=status)
-            #print(self.instruct)
+            self.instruct = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
 
-            if status.Get_tag() == self.tags['terminate']:
-                return;
+            if status.Get_tag() == self.tags['terminate']: return
 
             tstart = MPI.Wtime()
             self.run_serial_task()
