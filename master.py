@@ -12,12 +12,8 @@ class Master(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self,options=None):
         MPIClass.__init__(self,options)
-
         self.iteration=0
         self.niter = 10*self.comm.Get_size()
-        # process options
-        # (none)
-
         return
 
 
@@ -37,18 +33,30 @@ class Master(MPIClass):
         instruct = None
         result = None
 
-        # execution loop
+        # execution loop, until we determine we are finished.
         while not self.finished():
+            # get 'result' from any slave rank that is 'ready'.
+            result = self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status)
+            ready_rank = status.Get_source()
+
+            # do something useful with the result.
+            if result: print(result)
+
+            # send instructions to the ready rank. For this simple example
+            # this is just a string, but could be any pickleable data type
+            instruct = "step_{:05d}".format(self.iteration)
+            self.comm.send(instruct, dest=ready_rank, tag=self.tags['execute'])
+            print("Running step {} on rank {}".format(self.iteration,ready_rank))
+
+
+
+        # cleanup loop, send 'terminate' tag to each slave rank in
+        # whatever order they become ready.
+        # Don't forget to catch their final 'result'
+        print("  --> Finished dispatch, Terminating ranks")
+        for s in range(1,self.comm.Get_size()):
             result = self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status)
             if result: print(result)
-            instruct = "step_{:05d}".format(self.iteration)
-            self.comm.send(instruct, dest=status.Get_source(), tag=self.tags['ready'])
-            print("Running step {} on rank {}".format(self.iteration,status.Get_source()))
-
-        # cleanup loop, send 'terminate' tag to each slave rank
-        print("  --> Terminating ranks")
-        for s in range(1,self.comm.Get_size()):
-            self.comm.recv(source=s, tag=self.tags['ready'], status=status)
-            self.comm.send(None, dest=s, tag=self.tags['terminate'])
+            self.comm.send(None, dest=status.Get_source(), tag=self.tags['terminate'])
 
         return

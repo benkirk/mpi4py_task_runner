@@ -10,15 +10,17 @@ import shutil
 ################################################################################
 class MPIClass:
 
-    tags ={ 'ready'     : 1,
+    tags ={ 'ready'     : 10,
+            'execute'   : 11,
             'terminate' : 1000 }
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self,options=None):
+        # initialization, get 'options' data structure from rank 0
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.options = self.comm.bcast(options)
-        self.init_environment()
+        self.init_local_dirs()
         return
 
 
@@ -31,15 +33,20 @@ class MPIClass:
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def init_environment(self):
+    def init_local_dirs(self):
 
+        # remember the top 'rundir' where we were launched
         self.rundir = os.getcwd()
 
-        # get specified local temporary directory, if exists
+        # get specified local temporary directory, if exists.
+        # SLURM_JOB_TMPFS_TMPDIR, tmpfs ramdisk shared shared by all ranks on node
+        # SLURM_JOB_LOCAL_TMPDIR, /local/.XXXX-user shared by all ranks on node
         local_topdir = None
         if not local_topdir: local_topdir = os.getenv('SLURM_JOB_TMPFS_TMPDIR')
         if not local_topdir: local_topdir = os.getenv('SLURM_JOB_LOCAL_TMPDIR')
 
+        # local_topdir from slurm is job specific, let's create a subdirectory
+        # for this spefific MPI rank
         self.local_rankdir = tempfile.mkdtemp(prefix="rank{}_".format(self.rank),
                                               dir=local_topdir)
         return
@@ -48,6 +55,8 @@ class MPIClass:
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def cleanup(self):
+        # if we set up a local_rankdir, go back to the top workspace 'rundir'
+        # and clean up any temporary leftovers
         if self.local_rankdir:
             os.chdir(self.rundir)
             shutil.rmtree(self.local_rankdir,ignore_errors=True)
