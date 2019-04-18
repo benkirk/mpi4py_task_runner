@@ -53,3 +53,7 @@ blade29-fsl(2)$ env | grep TMPD
 TMPDIR=/tmp
 SLURM_JOB_TMPDIR=/nobackup/.scratch/tmp_slurm/852825-benkirk
 SLURM_JOB_LOCAL_TMPDIR=/local/.852825-benkirk
+
+
+benkirk@elfboy(94)$  tar xvf output-00007.tar --include="step_00007/*"
+benkirk@elfboy(105)$ tar xvf output-00007.tar --include="*98K*"
