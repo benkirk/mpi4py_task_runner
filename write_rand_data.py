@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-def write_rand_data( min_num_files=1, max_num_files=30, min_size=10,
-                     max_size=1024**2 ):
+def write_rand_data( min_num_files=10, max_num_files=30, min_size_pow=1,
+                     max_size_pow=6):
     """ Create a random number of files of random size.  The number of files
     is bracketed by [min_num_files, max_num_files] and the size of the
-    files is bracketed by [min_size, max_size].
+    files is bracketed by 10**[min_size_pow, max_size_pow] bytes.
 
-    File size inputs are in bytes.  Default maximum size, therefore, is 1 mb.
+    Default maximum size, therefore, is 10e6 bytes.
     """
 
     from random import randint
@@ -16,7 +16,7 @@ def write_rand_data( min_num_files=1, max_num_files=30, min_size=10,
     for i in range( n_files ):
 
         ### Generate random data
-        file_size = randint( min_size, max_size )
+        file_size = 10**randint( min_size_pow, max_size_pow )
         data = urandom( file_size )
 
         ### Name the file -- include the expected file size in the name
