@@ -13,7 +13,7 @@ mkdir /nobackup/$USER/codes
 cd /nobackup/$USER/codes
 git clone https://github.com/benkirk/mpi4py_task_runner.git
 cd mpi4py_task_runner/
-git checkout -b 0.1.0 v0.1.0
+git checkout -b 0.1.1 v0.1.1
 srun -n 80 --pty /bin/bash  # grab an interactive SLURM session on 80 cores
 
 # then in the interactive shell
