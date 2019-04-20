@@ -57,3 +57,6 @@ SLURM_JOB_LOCAL_TMPDIR=/local/.852825-benkirk
 
 benkirk@elfboy(94)$  tar xvf output-00007.tar --include="step_00007/*"
 benkirk@elfboy(105)$ tar xvf output-00007.tar --include="*98K*"
+
+# Linux, gnutar, file from all archives
+for file in output-*.tar ; do tar xvf ${file}  --wildcards --no-anchored "*98K*" ; done
