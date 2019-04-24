@@ -66,5 +66,5 @@ class Slave(MPIClass):
             self.run_serial_task()
             self.result = "  rank {} completed {} in {} sec.".format(self.rank,
                                                                      self.instruct,
-                                                                     MPI.Wtime() - tstart)
+                                                                     round(MPI.Wtime() - tstart,5))
         return
