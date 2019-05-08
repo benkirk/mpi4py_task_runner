@@ -38,12 +38,7 @@ class MPIClass:
         # remember the top 'rundir' where we were launched
         self.rundir = os.getcwd()
 
-        # get specified local temporary directory, if exists.
-        # SLURM_JOB_TMPFS_TMPDIR, tmpfs ramdisk shared shared by all ranks on node
-        # SLURM_JOB_LOCAL_TMPDIR, /local/.XXXX-user shared by all ranks on node
-        local_topdir = None
-        if not local_topdir: local_topdir = os.getenv('SLURM_JOB_TMPFS_TMPDIR')
-        if not local_topdir: local_topdir = os.getenv('SLURM_JOB_LOCAL_TMPDIR')
+        local_topdir = self.rundir
 
         # local_topdir from slurm is job specific, let's create a subdirectory
         # for this spefific MPI rank
