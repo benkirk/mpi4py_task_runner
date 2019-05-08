@@ -2,7 +2,7 @@
 module purge
 module load gcc slurm
 module load anaconda/3-5.0.1
-module load openmpi/1.10.4
+module load openmpi/latest
 module load mpi4py/3.0.1-python${PYTHON_VERSION}
 
 
