@@ -39,10 +39,10 @@ output.tar: $(wildcard output-?????.tar)
 
 summary:
 	for file in out*.tar; do \
-	  tar xvf $$file --wildcards "*/summary.txt" --to-command=cat; \
+	  tar xf $$file --wildcards "*/summary.txt" --to-command=cat; \
 	done
 
 byte_summary:
 	for file in out*.tar; do \
-	  tar xvf $$file --wildcards "*/summary.txt" --to-command="cat | grep \"bytes\""; \
+	  tar xf $$file --wildcards "*/summary.txt" --to-command="cat | grep \"bytes\""; \
 	done
