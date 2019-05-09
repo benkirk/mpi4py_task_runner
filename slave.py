@@ -2,7 +2,6 @@
 
 from mpi4py import MPI
 from mpiclass import MPIClass
-import tarfile
 import os
 import shutil
 from write_rand_data import *
@@ -21,9 +20,6 @@ class Slave(MPIClass):
         # a note as our first 'result'
         self.result = " Rank {} using local directory {}".format(self.rank, self.local_rankdir)
 
-        # process options. open any files thay belong in shared run directory.
-        if "archive" in self.options: self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
-
         return
 
 
@@ -40,9 +36,6 @@ class Slave(MPIClass):
             os.chdir(stepdir)
             write_rand_data()
             os.chdir(self.local_rankdir)
-            if self.tar:
-                self.tar.add(self.instruct)
-            shutil.rmtree(stepdir,ignore_errors=True)
         return
 
 

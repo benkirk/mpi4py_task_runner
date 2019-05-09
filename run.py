@@ -16,7 +16,7 @@ if rank:
 
 # master on rank 0
 else:
-    options = set(['archive'])
+    options = set(['none'])
 
     master = Master(options)
     master.run()
