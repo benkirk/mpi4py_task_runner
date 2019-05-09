@@ -30,7 +30,8 @@ output.tar: $(wildcard output-?????.tar)
 	echo " into $@"
 	rm -f output.tar
 	mv output-00001.tar tmp-out.tar
-	for file in out*.tar; do \
+	for file in output-?????.tar; do \
+	  echo $$file ; \
 	  tar --concatenate --file=tmp-out.tar $$file ; \
 	  rm -f $$file ; \
 	done
