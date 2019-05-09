@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import socket
+
 def write_rand_data( min_num_files=10, max_num_files=30, min_size_pow=1,
                      max_size_pow=6):
     """ Create a random number of files of random size.  The number of files
@@ -13,10 +15,12 @@ def write_rand_data( min_num_files=10, max_num_files=30, min_size_pow=1,
     from os import urandom
 
     n_files = randint( min_num_files, max_num_files )
+    total_size = 0
     for i in range( n_files ):
 
         ### Generate random data
         file_size = 10**randint( min_size_pow, max_size_pow )
+        total_size += file_size
         data = urandom( file_size )
 
         ### Name the file -- include the expected file size in the name
@@ -35,6 +39,15 @@ def write_rand_data( min_num_files=10, max_num_files=30, min_size_pow=1,
         ### Write the data
         with open( file_name, 'wb' ) as f:
             f.write( data )
+
+    # write summary file
+    with open ('summary.txt', 'w') as out:
+        hn=socket.gethostname()
+        out.write("{} wrote {} files\n".format(hn, n_files))
+        out.write("{} wrote {} bytes\n".format(hn, total_size))
+
+
+
 
 if __name__ == '__main__':
     write_rand_data()
