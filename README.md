@@ -23,6 +23,10 @@ exit
 
 # back on the login node
 make list
+
+# cat the file 'summary.txt'
+make summary
+
 # only if you really need to!!
 make extract
 
