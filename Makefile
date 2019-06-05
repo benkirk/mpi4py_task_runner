@@ -46,3 +46,17 @@ byte_summary:
 	for file in out*.tar; do \
 	  tar xf $$file --wildcards "*/summary.txt" --to-command="cat | grep \"bytes\""; \
 	done
+
+testtree: Makefile
+	rm -rf testtree testdir.tmp
+	for a in $$(seq 1 16); do \
+	  for b in $$(seq 1 16); do \
+	    dirname=$$(printf "testdir.tmp/%02d/%02d/" $$a $$b) ; \
+	    echo $$dirname && mkdir -p $$dirname && date > $$dirname/out1.txt ; \
+	    for c in $$(seq 1 16); do \
+	      dirname=$$(printf "testdir.tmp/%02d/%02d/%02d/" $$a $$b $$c) ; \
+	      echo $$dirname && mkdir -p $$dirname && date > $$dirname/out2.txt ; \
+	    done ; \
+	  done ; \
+	done
+	mv testdir.tmp testtree && find testtree -type f

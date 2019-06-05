@@ -15,12 +15,17 @@ class MPIClass:
             'terminate' : 1000 }
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self,options=None):
+    def __init__(self,options=None,initdirs=True):
         # initialization, get 'options' data structure from rank 0
         self.comm = MPI.COMM_WORLD
-        self.rank = self.comm.Get_rank()
+        self.rank   = self.comm.Get_rank()
+        self.nranks = self.comm.Get_size()
+        self.i_am_root = False if self.rank else True
         self.options = self.comm.bcast(options)
-        self.init_local_dirs()
+        if initdirs:
+            self.init_local_dirs()
+        else:
+            self.local_rankdir = None
         return
 
 
