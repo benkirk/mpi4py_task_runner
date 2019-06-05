@@ -42,7 +42,15 @@ class Workthief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def recurse(self, top, maxdepth=sys.maxint, depth=0):
+    def excess_work(self):
+        if len(self.queue) < 10:
+            return False
+        return True
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def recurse(self, top, maxdepth=10**9, depth=0):
 
         for f in os.listdir(top):
             pathname = os.path.join(top, f)
@@ -80,13 +88,13 @@ class Workthief(MPIClass):
 
         if not nentries:
             seed(self.rank+self.nranks)
-            nentries = randint(0, 2*self.nranks)
+            nentries = randint(0, 10*self.nranks)
         seed(self.rank)
 
         vals=[]
 
         while len(vals) != nentries:
-            vals.append(randint(0,sys.maxint) % self.nranks)
+            vals.append(randint(0,10**9) % self.nranks)
 
         return np.array(vals)
 
@@ -193,7 +201,7 @@ class Workthief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
-        self.process()
+        #self.process()
         self.comm.Barrier()
         sys.stdout.flush()
         self.nbc()
