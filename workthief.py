@@ -25,7 +25,7 @@ class Workthief(MPIClass):
 
         if self.i_am_root:
             self.recurse("testtree", maxdepth=1)
-            sep="-"*80
+            sep="-s"*40
             print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
             print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
             print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
@@ -53,6 +53,19 @@ class Workthief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def process(self):
+
+        while self.queue:
+            self.recurse(self.queue.pop())
+
+        if self.i_am_root:
+            sep="-e"*40
+            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+            print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
+            print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run_serial_task(self):
         return
 
@@ -60,6 +73,7 @@ class Workthief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
+        self.process()
         return
 
 
