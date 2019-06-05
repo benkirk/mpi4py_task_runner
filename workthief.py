@@ -11,7 +11,7 @@ from collections import deque
 
 
 ################################################################################
-class Thief(MPIClass):
+class Workthief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
@@ -24,11 +24,11 @@ class Thief(MPIClass):
         self.files = []
 
         if self.i_am_root:
-            self.recurse("testtree", maxdepth=100)
+            self.recurse("testtree", maxdepth=1)
             sep="-"*80
-            print("{}\ndir queue=\n{}".format(sep,self.queue))
-            print("{}\ndirs found=\n{}".format(sep,self.dirs))
-            print("{}\nfiles found=\n{}".format(sep,self.files))
+            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+            print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
+            print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
         return
 
 
@@ -67,5 +67,5 @@ class Thief(MPIClass):
 
 ################################################################################
 if __name__ == "__main__":
-    t = Thief()
-    t.run()
+    wt = Workthief()
+    wt.run()

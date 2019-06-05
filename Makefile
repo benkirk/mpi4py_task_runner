@@ -50,12 +50,14 @@ byte_summary:
 testtree: Makefile
 	rm -rf testtree testdir.tmp
 	for a in $$(seq 1 16); do \
+	  dirname=$$(printf "testdir.tmp/%02d/" $$a) ; \
+	  echo $$dirname && mkdir -p $$dirname && echo $$dirname > $$dirname/out1.txt &&  date > $$dirname/out1.txt ; \
 	  for b in $$(seq 1 16); do \
 	    dirname=$$(printf "testdir.tmp/%02d/%02d/" $$a $$b) ; \
-	    echo $$dirname && mkdir -p $$dirname && date > $$dirname/out1.txt ; \
+	    echo $$dirname && mkdir -p $$dirname && echo $$dirname > $$dirname/out2.txt && date > $$dirname/out2.txt ; \
 	    for c in $$(seq 1 16); do \
 	      dirname=$$(printf "testdir.tmp/%02d/%02d/%02d/" $$a $$b $$c) ; \
-	      echo $$dirname && mkdir -p $$dirname && date > $$dirname/out2.txt ; \
+	      echo $$dirname && mkdir -p $$dirname && echo $$dirname > $$dirname/out3.txt && date >> $$dirname/out3.txt ; \
 	    done ; \
 	  done ; \
 	done
