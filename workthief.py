@@ -6,7 +6,7 @@ import os, sys
 from random import randint, seed
 from stat import *
 from write_rand_data import *
-from collections import deque
+from collections import defaultdict
 from mpi4py import MPI
 from mpiclass import MPIClass
 
@@ -27,53 +27,16 @@ class Workthief(MPIClass):
         MPIClass.__init__(self,initdirs=False)
 
         self.instruct = None;
-        self.queue = deque()
+        self.queue = []
         self.dirs = []
         self.files = []
+        self.excess_threshold = 10
+        self.starve_threshold =  0
+        self.sendvals = defaultdict(list)
+        self.requests = []
         self.init_queue()
+
         return
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def init_queue(self):
-        if self.i_am_root:
-            self.recurse("testtree", maxdepth=1)
-            sep="-s"*40
-            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
-            print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
-            print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
-
-            while self.excess_work():
-                for dest in range(1,self.nranks):
-                    if self.excess_work(): # still??
-                        sendval = self.queue.pop()
-                        print("sending '{}' to rank {}".format(sendval,dest))
-            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
-        return
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def excess_work(self, threshold=10):
-        # do not just cal 'len', it can be more expensive than we need
-        cnt=0
-        for item in self.queue:
-            cnt += 1
-            if cnt == threshold: return True
-        return False
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def need_work(self, threshold=5):
-
-        # do not just cal 'len', it can be more expensive than we need
-        cnt=0
-        for item in self.queue:
-            cnt += 1
-            if cnt == threshold: return False
-        return True
 
 
 
@@ -93,6 +56,53 @@ class Workthief(MPIClass):
                 #print(statinfo)
                 self.files.append(pathname)
         return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def init_queue(self):
+        if self.i_am_root:
+            self.recurse("testtree", maxdepth=1)
+            sep="-s"*40
+            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+            print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
+            print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
+
+            # populate initial tasks for other ranks
+            excess = self.excess_work()
+            while excess:
+                for dest in range(1,self.nranks):
+                    if excess:
+                        self.sendvals[dest].append(self.queue.pop())
+                        excess = self.excess_work() # still?
+
+            for dest in range(1,self.nranks):
+                if self.sendvals[dest]:
+                    print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
+                    r = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_assign'])
+                    self.requests.append(r)
+
+
+            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def excess_work(self):
+        if self.nranks == 1: return False # no excess work with no helpers!
+        if len(self.queue) > self.excess_threshold:
+            return (len(self.queue) - self.excess_threshold)
+        return False
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def need_work(self):
+        if self.nranks == 1: return False # don't gather work without sources!
+        if len(self.queue) <= self.starve_threshold:
+            return True
+        return False
 
 
 
@@ -119,12 +129,12 @@ class Workthief(MPIClass):
             nentries = randint(0, 10*self.nranks)
         seed(self.rank)
 
-        vals=[]
+        vals=np.empty(nentries, dtype=np.int)
 
-        while len(vals) != nentries:
-            vals.append(randint(0,10**9) % self.nranks)
+        for idx in range(0,nentries):
+            vals[idx] = randint(0,10**9) % self.nranks
 
-        return np.array(vals)
+        return vals
 
 
 
@@ -132,21 +142,14 @@ class Workthief(MPIClass):
     def nbc(self):
 
         srcs=set()
-        dests = self.random_rank_in_range()
-
-        # We don't need this long term.
-        send_map = np.zeros(self.nranks, dtype=np.int)
-        for dest in dests: send_map[dest] += 1
-        send_map = self.comm.allreduce(send_map, MPI.SUM)
+        dests= [] #self.random_rank_in_range()
 
         # print start message
         for p in range(0,self.nranks):
             self.comm.Barrier()
             sys.stdout.flush()
-            if p == self.rank:
+            if p == self.rank and len(dests):
                 if self.i_am_root:
-                    print("-"*80)
-                    print(send_map)
                     print("-"*80)
                 print("-s-> rank {:3d} sending {:3d} messages to ranks {}".format(self.rank, len(dests), dests))
 
@@ -154,7 +157,6 @@ class Workthief(MPIClass):
         sendval = "foobar"
         recv_cnt = 0
         recv_loop = 0
-        requests = []
         barrier = None
         done = False
 
@@ -162,12 +164,12 @@ class Workthief(MPIClass):
 
         # start sends
         for dest in dests:
-            r = self.comm.issend(sendval, dest=dest, tag=100)
-            requests.append(r)
+            r = self.comm.issend(sendval, dest=dest, tag=self.tags['work_assign'])
+            self.requests.append(r)
 
         status = MPI.Status()
 
-        # idx, flag, msg = MPI.Request.testany(requests)
+        # idx, flag, msg = MPI.Request.testany(self.requests)
         # print(idx, flag, msg)
         # assert not flag
         # assert idx == MPI.UNDEFINED
@@ -179,20 +181,20 @@ class Workthief(MPIClass):
             recv_loop += 1
 
             # message waiting?
-            if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=100, status=status):
+            if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status):
                 source = status.Get_source()
+                tag = status.Get_tag()
                 srcs.add(source)
                 recvval = None
-                recvval = self.comm.recv(source=source, tag=100)
-                assert sendval == recvval
-                assert status.Get_tag() == 100
+                recvval = self.comm.recv(source=source, tag=tag)
+                if sendval != recvval: print("{:3d} rank got '{}'".format(self.rank,recvval))
                 recv_cnt += 1
 
             # barrier not active
             if not barrier:
                 # activate barrier when all my sends complete
-                # if self.i_am_root: print(MPI.Request.testany(requests))
-                all_sent = MPI.Request.Testall(requests)
+                # if self.i_am_root: print(MPI.Request.testany(self.requests))
+                all_sent = MPI.Request.Testall(self.requests)
                 if all_sent:  barrier = self.comm.Ibarrier()
 
             # otherwise see if barrier completed
@@ -202,11 +204,9 @@ class Workthief(MPIClass):
         # complete
         tstop = MPI.Wtime()
 
-        assert recv_cnt == send_map[self.rank]
-
         max_steps = self.comm.allreduce(recv_loop, MPI.MAX)
 
-        # idx, flag, msg = MPI.Request.testany(requests)
+        # idx, flag, msg = MPI.Request.testany(self.requests)
         # print(idx, flag)
         # assert idx == MPI.UNDEFINED
         # assert flag
@@ -215,7 +215,7 @@ class Workthief(MPIClass):
         for p in range(0,self.nranks):
             self.comm.Barrier()
             sys.stdout.flush()
-            if p == self.rank:
+            if p == self.rank and (recv_cnt or self.i_am_root):
                 if self.i_am_root:
                     print("-"*80)
                     print("Completed in {:4f} seconds on {} ranks in max {} steps".format(tstop-tstart,
