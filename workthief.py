@@ -41,14 +41,45 @@ class Workthief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __del__(self):
+
+        self.comm.Barrier()
+        sys.stdout.flush()
+
+        sep="-"*80
+        assert len(self.queue) == 0
+        nfiles = len(self.files)
+        ndirs  = len(self.dirs)
+
+        # print end message
+        for p in range(0,self.nranks):
+            self.comm.Barrier()
+            sys.stdout.flush()
+            if p == self.rank:
+                if self.i_am_root: print(sep)
+
+                #print(nrank {}, found {} files, {} dirs".format(self.rank,self.files,self.dirs))
+                print("rank {}, found {} files, {} dirs".format(self.rank, nfiles, ndirs))
+
+        nfiles = self.comm.allreduce(nfiles, MPI.SUM)
+        ndirs  = self.comm.allreduce(ndirs, MPI.SUM)
+        if self.i_am_root:
+            print("{}\nTotal found {} files, {} dirs".format(sep,nfiles,ndirs))
+
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def recurse(self, top, maxdepth=10**9, depth=0):
+
+        self.dirs.append(top)
 
         for f in os.listdir(top):
             pathname = os.path.join(top, f)
             statinfo = os.stat(pathname)
             if S_ISDIR(statinfo.st_mode):
                 if (depth < maxdepth):
-                    self.dirs.append(pathname)
                     self.recurse(pathname, maxdepth, depth=depth+1)
                 else:
                     self.queue.append(pathname)
@@ -62,7 +93,7 @@ class Workthief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def init_queue(self):
         if self.i_am_root:
-            self.recurse("testtree", maxdepth=1)
+            self.recurse("testtree", maxdepth=0)
             sep="-s"*40
             print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
             print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
@@ -79,7 +110,7 @@ class Workthief(MPIClass):
             for dest in range(1,self.nranks):
                 if self.sendvals[dest]:
                     print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
-                    r = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_assign'])
+                    r = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
                     self.requests.append(r)
 
 
@@ -107,17 +138,22 @@ class Workthief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def process(self):
+    def progress(self):
 
-        while self.queue:
-            self.recurse(self.queue.pop())
+        if self.queue:
+            self.recurse(self.queue.pop(), maxdepth=1)
 
-        if self.i_am_root:
-            sep="-e"*40
-            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
-            print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
-            print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
         return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def random_rank (self):
+        if self.nranks == 1: return 0
+        rrank = self.rank
+        while rrank != self.rank:
+            rrank = randint(0,(self.nranks-1))
+        return rrank
 
 
 
@@ -127,7 +163,10 @@ class Workthief(MPIClass):
         if not nentries:
             seed(self.rank+self.nranks)
             nentries = randint(0, 10*self.nranks)
-        seed(self.rank)
+
+        if 'rand_initialized' not in Workthief.__dict__:
+            seed(self.rank)
+            Workthief.rand_initialized = True
 
         vals=np.empty(nentries, dtype=np.int)
 
@@ -139,33 +178,16 @@ class Workthief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def nbc(self):
+    def execute(self):
 
         srcs=set()
-        dests= [] #self.random_rank_in_range()
 
-        # print start message
-        for p in range(0,self.nranks):
-            self.comm.Barrier()
-            sys.stdout.flush()
-            if p == self.rank and len(dests):
-                if self.i_am_root:
-                    print("-"*80)
-                print("-s-> rank {:3d} sending {:3d} messages to ranks {}".format(self.rank, len(dests), dests))
-
-
-        sendval = "foobar"
         recv_cnt = 0
         recv_loop = 0
         barrier = None
         done = False
 
         tstart = MPI.Wtime()
-
-        # start sends
-        for dest in dests:
-            r = self.comm.issend(sendval, dest=dest, tag=self.tags['work_assign'])
-            self.requests.append(r)
 
         status = MPI.Status()
 
@@ -180,15 +202,32 @@ class Workthief(MPIClass):
 
             recv_loop += 1
 
+            # make progress on our own work
+            self.progress()
+
+            # # I need more work?
+            # if self.need_work():
+            #     # steal at random
+            #     stealfrom = self.random_rank()
+            #     r = self.comm.issend(None, dest=stealfrom, tag=self.tags['work_request'])
+
             # message waiting?
             if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status):
+                # probe the source and tag before receiving
                 source = status.Get_source()
                 tag = status.Get_tag()
                 srcs.add(source)
-                recvval = None
+
+                # complete the receive
                 recvval = self.comm.recv(source=source, tag=tag)
-                if sendval != recvval: print("{:3d} rank got '{}'".format(self.rank,recvval))
                 recv_cnt += 1
+                if recvval: print("{:3d} rank got '{}'".format(self.rank,recvval))
+
+                # # take action based on tag
+                if tag == self.tags['work_reply']:
+                    self.queue.extend(recvval)
+                elif tag == self.tags['work_request']:
+                    raise Exception('\'work_request\' not implemented')
 
             # barrier not active
             if not barrier:
@@ -198,7 +237,7 @@ class Workthief(MPIClass):
                 if all_sent:  barrier = self.comm.Ibarrier()
 
             # otherwise see if barrier completed
-            else:
+            elif not self.queue:
                 done = MPI.Request.Test(barrier)
 
         # complete
@@ -243,7 +282,7 @@ class Workthief(MPIClass):
         #self.process()
         self.comm.Barrier()
         sys.stdout.flush()
-        self.nbc()
+        self.execute()
         return
 
 
