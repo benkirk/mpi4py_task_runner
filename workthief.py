@@ -30,21 +30,49 @@ class Workthief(MPIClass):
         self.queue = deque()
         self.dirs = []
         self.files = []
+        self.init_queue()
+        return
 
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def init_queue(self):
         if self.i_am_root:
             self.recurse("testtree", maxdepth=1)
             sep="-s"*40
             print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
             print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
             print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
+
+            while self.excess_work():
+                for dest in range(1,self.nranks):
+                    if self.excess_work(): # still??
+                        sendval = self.queue.pop()
+                        print("sending '{}' to rank {}".format(sendval,dest))
+            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
         return
 
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def excess_work(self):
-        if len(self.queue) < 10:
-            return False
+    def excess_work(self, threshold=10):
+        # do not just cal 'len', it can be more expensive than we need
+        cnt=0
+        for item in self.queue:
+            cnt += 1
+            if cnt == threshold: return True
+        return False
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def need_work(self, threshold=5):
+
+        # do not just cal 'len', it can be more expensive than we need
+        cnt=0
+        for item in self.queue:
+            cnt += 1
+            if cnt == threshold: return False
         return True
 
 
@@ -123,8 +151,7 @@ class Workthief(MPIClass):
                 print("-s-> rank {:3d} sending {:3d} messages to ranks {}".format(self.rank, len(dests), dests))
 
 
-        sendval = np.full(10000, 12345, dtype=np.int)
-        recvval = np.zeros_like(sendval)
+        sendval = "foobar"
         recv_cnt = 0
         recv_loop = 0
         requests = []
@@ -135,10 +162,16 @@ class Workthief(MPIClass):
 
         # start sends
         for dest in dests:
-            r = self.comm.Issend(sendval, dest=dest, tag=100)
+            r = self.comm.issend(sendval, dest=dest, tag=100)
             requests.append(r)
 
         status = MPI.Status()
+
+        # idx, flag, msg = MPI.Request.testany(requests)
+        # print(idx, flag, msg)
+        # assert not flag
+        # assert idx == MPI.UNDEFINED
+        # self.comm.Barrier()
 
         # enter recv loop
         while not done:
@@ -146,24 +179,25 @@ class Workthief(MPIClass):
             recv_loop += 1
 
             # message waiting?
-            if self.comm.Iprobe(source=MPI.ANY_SOURCE, tag=100, status=status):
+            if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=100, status=status):
                 source = status.Get_source()
                 srcs.add(source)
-                recvval[:] = 0
-                self.comm.Recv(recvval, source=source, tag=100)
-                assert np.array_equal(recvval, sendval)
+                recvval = None
+                recvval = self.comm.recv(source=source, tag=100)
+                assert sendval == recvval
                 assert status.Get_tag() == 100
                 recv_cnt += 1
 
             # barrier not active
             if not barrier:
                 # activate barrier when all my sends complete
-                all_sent, msg = MPI.Request.testall(requests)
+                # if self.i_am_root: print(MPI.Request.testany(requests))
+                all_sent = MPI.Request.Testall(requests)
                 if all_sent:  barrier = self.comm.Ibarrier()
 
             # otherwise see if barrier completed
             else:
-                done, msg = MPI.Request.test(barrier)
+                done = MPI.Request.Test(barrier)
 
         # complete
         tstop = MPI.Wtime()
@@ -171,6 +205,11 @@ class Workthief(MPIClass):
         assert recv_cnt == send_map[self.rank]
 
         max_steps = self.comm.allreduce(recv_loop, MPI.MAX)
+
+        # idx, flag, msg = MPI.Request.testany(requests)
+        # print(idx, flag)
+        # assert idx == MPI.UNDEFINED
+        # assert flag
 
         # print end message
         for p in range(0,self.nranks):
