@@ -10,11 +10,11 @@ import shutil
 ################################################################################
 class MPIClass:
 
-    tags ={ 'ready'       : 10,
-            'execute'     : 11,
-            'work_assign' : 20,
-            'work_reply'  : 21,
-            'terminate'   : 1000 }
+    tags ={ 'ready'         : 10,
+            'execute'       : 11,
+            'work_reply'    : 20,
+            'work_request'  : 21,
+            'terminate'     : 1000 }
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self,options=None,initdirs=True):
