@@ -41,7 +41,7 @@ class Workthief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __del__(self):
+    def summary(self):
 
         self.comm.Barrier()
         sys.stdout.flush()
@@ -61,10 +61,10 @@ class Workthief(MPIClass):
                 #print(nrank {}, found {} files, {} dirs".format(self.rank,self.files,self.dirs))
                 print("rank {}, found {} files, {} dirs".format(self.rank, nfiles, ndirs))
 
-        nfiles = self.comm.allreduce(nfiles, MPI.SUM)
-        ndirs  = self.comm.allreduce(ndirs, MPI.SUM)
+        nfiles_tot = self.comm.allreduce(nfiles, MPI.SUM)
+        ndirs_tot  = self.comm.allreduce(ndirs, MPI.SUM)
         if self.i_am_root:
-            print("{}\nTotal found {} files, {} dirs".format(sep,nfiles,ndirs))
+            print("{}\nTotal found {} files, {} dirs".format(sep,nfiles_tot,ndirs_tot))
 
         return
 
@@ -292,3 +292,4 @@ class Workthief(MPIClass):
 if __name__ == "__main__":
     wt = Workthief()
     wt.run()
+    wt.summary()
