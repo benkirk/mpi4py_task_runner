@@ -223,7 +223,7 @@ class Workthief(MPIClass):
                 recv_cnt += 1
                 if recvval: print("{:3d} rank got '{}'".format(self.rank,recvval))
 
-                # # take action based on tag
+                # take action based on tag
                 if tag == self.tags['work_reply']:
                     self.queue.extend(recvval)
                 elif tag == self.tags['work_request']:
