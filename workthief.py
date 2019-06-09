@@ -35,6 +35,10 @@ class WorkThief(MPIClass):
 
         MPIClass.__init__(self,initdirs=False)
 
+        self.rank_up   = self.rank+1 % self.nranks
+        self.rank_down = (self.nranks-1) if self.i_am_root else (self.rank-1)
+        self.last_steal = self.rank_up
+
         self.instruct = None;
         self.queue = []
         self.dirs = []
@@ -171,10 +175,11 @@ class WorkThief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def progress(self):
+    def progress(self,nsteps=1):
 
-        if self.queue:
-            self.recurse(self.queue.pop(), maxdepth=1)
+        for step in range(0,nsteps):
+            if self.queue:
+                self.recurse(self.queue.pop(), maxdepth=1)
 
         return
 
@@ -216,9 +221,6 @@ class WorkThief(MPIClass):
         srcs=set()
 
         # intialiaze acounting & misc vals
-        rank_up   = self.rank+1 % self.nranks
-        rank_down = (self.nranks-1) if self.i_am_root else (self.rank-1)
-
         my_size     = np.full(1, 1, dtype=np.int)
         gloabl_size = np.full(1, 1, dtype=np.int)
 
@@ -277,9 +279,9 @@ class WorkThief(MPIClass):
                 # Do I need more work?
                 if self.nranks > 1:
                     if self.need_work() and not i_requested_work:
-                        print("rank {:3d} requesing work for {:3d} from {:3d}".format(self.rank, self.rank, rank_down))
+                        print("rank {:3d} requesing work for {:3d} from {:3d}".format(self.rank, self.rank, self.rank_down))
                         # abuse requests[self.rank]
-                        self.requests[self.rank] = self.comm.issend(wr_out, dest=rank_down, tag=self.tags['work_request'])
+                        self.requests[self.rank] = self.comm.issend(wr_out, dest=self.rank_down, tag=self.tags['work_request'])
                         i_requested_work = True
 
                 # work request?
