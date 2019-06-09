@@ -2,11 +2,12 @@
 import shutil
 import numpy as np
 import tarfile
-import os, sys
+import os, sys, copy
 from random import randint, seed
 from stat import *
 from write_rand_data import *
 from collections import defaultdict
+from time import sleep
 from mpi4py import MPI
 from mpiclass import MPIClass
 
@@ -15,11 +16,19 @@ from mpiclass import MPIClass
 
 np.set_printoptions(threshold=7)
 
-#############################################
+
+################################################################################
+class WorkReq:
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __init__(self,req_rank):
+        self.req_rank = req_rank
+        self.step=0
+        return
 
 
 ################################################################################
-class Workthief(MPIClass):
+class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
@@ -30,10 +39,10 @@ class Workthief(MPIClass):
         self.queue = []
         self.dirs = []
         self.files = []
-        self.excess_threshold = 10
+        self.excess_threshold =  2
         self.starve_threshold =  0
         self.sendvals = defaultdict(list)
-        self.requests = []
+        self.requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
         self.init_queue()
 
         return
@@ -63,6 +72,8 @@ class Workthief(MPIClass):
 
         nfiles_tot = self.comm.allreduce(nfiles, MPI.SUM)
         ndirs_tot  = self.comm.allreduce(ndirs, MPI.SUM)
+        self.comm.Barrier()
+        sys.stdout.flush()
         if self.i_am_root:
             print("{}\nTotal found {} files, {} dirs".format(sep,nfiles_tot,ndirs_tot))
 
@@ -93,7 +104,8 @@ class Workthief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def init_queue(self):
         if self.i_am_root:
-            self.recurse("testtree", maxdepth=0)
+            rootdir='.'
+            self.recurse(rootdir, maxdepth=0)
             sep="-s"*40
             print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
             print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
@@ -110,8 +122,7 @@ class Workthief(MPIClass):
             for dest in range(1,self.nranks):
                 if self.sendvals[dest]:
                     print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
-                    r = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
-                    self.requests.append(r)
+                    self.requests[dest] = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
 
 
             print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
@@ -130,10 +141,32 @@ class Workthief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def need_work(self):
-        if self.nranks == 1: return False # don't gather work without sources!
         if len(self.queue) <= self.starve_threshold:
             return True
         return False
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def split_queue(self):
+
+        curlen = len(self.queue)
+        if curlen < 2: return None
+
+        mid = int(curlen/2)
+
+        if mid == 0: return None
+
+        front = self.queue[0:mid]
+        back  = self.queue[mid:]
+
+        if (len(front) + len(back)) != curlen:
+            print ("q={},\nf={},\nb={}".format(self.queue, front, back))
+            print (len(front),len(back),(len(front)+len(back)),curlen)
+            raise Exception('error splitting queue!')
+
+        self.queue = back
+        return front
 
 
 
@@ -164,9 +197,9 @@ class Workthief(MPIClass):
             seed(self.rank+self.nranks)
             nentries = randint(0, 10*self.nranks)
 
-        if 'rand_initialized' not in Workthief.__dict__:
+        if 'rand_initialized' not in WorkThief.__dict__:
             seed(self.rank)
-            Workthief.rand_initialized = True
+            WorkThief.rand_initialized = True
 
         vals=np.empty(nentries, dtype=np.int)
 
@@ -182,13 +215,22 @@ class Workthief(MPIClass):
 
         srcs=set()
 
+        # intialiaze acounting & misc vals
+        rank_up   = self.rank+1 % self.nranks
+        rank_down = (self.nranks-1) if self.i_am_root else (self.rank-1)
+
+        my_size     = np.full(1, 1, dtype=np.int)
+        gloabl_size = np.full(1, 1, dtype=np.int)
+
         recv_cnt = 0
         recv_loop = 0
-        barrier = None
-        done = False
+        inner_loop = 0
+        outer_loop = 0
+
+        wr_out = WorkReq(self.rank)
+        my_work_request = MPI.REQUEST_NULL
 
         tstart = MPI.Wtime()
-
         status = MPI.Status()
 
         # idx, flag, msg = MPI.Request.testany(self.requests)
@@ -197,48 +239,83 @@ class Workthief(MPIClass):
         # assert idx == MPI.UNDEFINED
         # self.comm.Barrier()
 
-        # enter recv loop
-        while not done:
+        # enter nonzero size loop
+        while gloabl_size[0]:
 
-            recv_loop += 1
+            # loop specific
+            outer_loop += 1
+            allreduce = None
+            done = False
+            looped = False
+            inner_loop = 0
+            i_requested_work = False
 
-            # make progress on our own work
-            self.progress()
+            # enter work loop
+            while not done:
 
-            # # I need more work?
-            # if self.need_work():
-            #     # steal at random
-            #     stealfrom = self.random_rank()
-            #     r = self.comm.issend(None, dest=stealfrom, tag=self.tags['work_request'])
+                inner_loop += 1
+                recv_loop += 1
 
-            # message waiting?
-            if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status):
-                # probe the source and tag before receiving
-                source = status.Get_source()
-                tag = status.Get_tag()
-                srcs.add(source)
+                # work reply?
+                if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_reply'], status=status):
+                    # probe the source and tag before receiving
+                    source = status.Get_source()
+                    srcs.add(source)
 
-                # complete the receive
-                recvval = self.comm.recv(source=source, tag=tag)
-                recv_cnt += 1
-                if recvval: print("{:3d} rank got '{}'".format(self.rank,recvval))
+                    # complete the receive
+                    recvval = self.comm.recv(source=source, tag=self.tags['work_reply'])
+                    recv_cnt += 1
+                    if recvval:
+                        #print("{:3d} rank got '{}' from rank {:3d}".format(self.rank,recvval,source))
+                        self.queue.extend(recvval)
+                        i_requested_work = False
+                        looped = False
 
-                # take action based on tag
-                if tag == self.tags['work_reply']:
-                    self.queue.extend(recvval)
-                elif tag == self.tags['work_request']:
-                    raise Exception('\'work_request\' not implemented')
+                # make progress on our own work
+                self.progress()
 
-            # barrier not active
-            if not barrier:
-                # activate barrier when all my sends complete
-                # if self.i_am_root: print(MPI.Request.testany(self.requests))
-                all_sent = MPI.Request.Testall(self.requests)
-                if all_sent:  barrier = self.comm.Ibarrier()
+                # Do I need more work?
+                if self.nranks > 1:
+                    if self.need_work() and not i_requested_work:
+                        print("rank {:3d} requesing work for {:3d} from {:3d}".format(self.rank, self.rank, rank_down))
+                        # abuse requests[self.rank]
+                        self.requests[self.rank] = self.comm.issend(wr_out, dest=rank_down, tag=self.tags['work_request'])
+                        i_requested_work = True
 
-            # otherwise see if barrier completed
-            elif not self.queue:
-                done = MPI.Request.Test(barrier)
+                # work request?
+                if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_request'], status=status):
+                    # probe the source and tag before receiving
+                    source = status.Get_source()
+                    srcs.add(source)
+
+                    recv_cnt += 1
+
+                    # if we can satisfy the request, lets send the reply first. This makes sure the
+                    # new message is in flight before the sending request completes
+                    if self.excess_work():
+                        self.sendvals[source] = self.split_queue()
+                        print("rank {:3d} satisfying work request from {}".format(self.rank, source))
+                        self.requests[source] = self.comm.issend(self.sendvals[source],
+                                                                 dest=source,
+                                                                 tag=self.tags['work_reply'])
+
+                    # complete the request, if we had work we sent it, otherwise ignore
+                    reqval = self.comm.recv(source=source, tag=self.tags['work_request'])
+
+
+
+                # iallreduce bits
+                if not allreduce:
+                    # activate barrier when all my sends complete
+                    all_sent, msg = MPI.Request.testall(self.requests)
+                    if all_sent:
+                        my_size[0] = len(self.queue)
+                        allreduce = self.comm.Iallreduce(my_size, gloabl_size)
+
+                # otherwise see if allreduce completed
+                else:
+                    done, msg = MPI.Request.test(allreduce)
+                    #if done and self.i_am_root: print("step {} completed with {} remaining".format(outer_loop, gloabl_size[0]))
 
         # complete
         tstop = MPI.Wtime()
@@ -290,6 +367,6 @@ class Workthief(MPIClass):
 
 ################################################################################
 if __name__ == "__main__":
-    wt = Workthief()
+    wt = WorkThief()
     wt.run()
     wt.summary()
