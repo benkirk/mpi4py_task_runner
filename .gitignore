@@ -4,3 +4,4 @@ output-*.tar
 f*.dat
 output.tar
 testtree
+*.out
