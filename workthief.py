@@ -54,6 +54,16 @@ class WorkThief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def next_steal(self):
+
+        self.last_steal = (self.last_steal + 1) % self.nranks
+        if self.last_steal == self.rank:
+            self.last_steal = (self.last_steal + 1) % self.nranks
+        return self.last_steal
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def summary(self):
 
         self.comm.Barrier()
@@ -279,9 +289,11 @@ class WorkThief(MPIClass):
                 # Do I need more work?
                 if self.nranks > 1:
                     if self.need_work() and not i_requested_work:
-                        print("rank {:3d} requesing work for {:3d} from {:3d}".format(self.rank, self.rank, self.rank_down))
+                        stealfrom = self.next_steal()
+                        print("rank {:3d} requesing work for {:3d} from {:3d}".format(self.rank, self.rank, stealfrom))
                         # abuse requests[self.rank]
-                        self.requests[self.rank] = self.comm.issend(wr_out, dest=self.rank_down, tag=self.tags['work_request'])
+                        MPI.Request.Wait(self.requests[self.rank])
+                        self.requests[self.rank] = self.comm.issend(None, dest=stealfrom, tag=self.tags['work_request'])
                         i_requested_work = True
 
                 # work request?
@@ -295,6 +307,7 @@ class WorkThief(MPIClass):
                     # if we can satisfy the request, lets send the reply first. This makes sure the
                     # new message is in flight before the sending request completes
                     if self.excess_work():
+                        MPI.Request.Wait(self.requests[source])
                         self.sendvals[source] = self.split_queue()
                         print("rank {:3d} satisfying work request from {}".format(self.rank, source))
                         self.requests[source] = self.comm.issend(self.sendvals[source],
@@ -336,6 +349,7 @@ class WorkThief(MPIClass):
             if p == self.rank and (recv_cnt or self.i_am_root):
                 if self.i_am_root:
                     print("-"*80)
+                    print("{} outer loops completed".format(outer_loop))
                     print("Completed in {:4f} seconds on {} ranks in max {} steps".format(tstop-tstart,
                                                                                           self.nranks,
                                                                                           max_steps))
