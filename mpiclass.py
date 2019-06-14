@@ -14,6 +14,7 @@ class MPIClass:
             'execute'       : 11,
             'work_reply'    : 20,
             'work_request'  : 21,
+            'work_deny'     : 22,
             'terminate'     : 1000 }
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

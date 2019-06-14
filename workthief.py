@@ -242,6 +242,10 @@ class WorkThief(MPIClass):
         wr_out = WorkReq(self.rank)
         my_work_request = MPI.REQUEST_NULL
 
+        # lists of ranks
+        i_denied = set()
+        denied_me = set()
+
         tstart = MPI.Wtime()
         status = MPI.Status()
 
@@ -262,11 +266,29 @@ class WorkThief(MPIClass):
             inner_loop = 0
             i_requested_work = False
 
+            i_denied.clear()
+            denied_me.clear()
+
             # enter work loop
             while not done:
 
                 inner_loop += 1
                 recv_loop += 1
+
+
+
+                # make progress on our own work
+                self.progress()
+
+
+
+                # single rank optimization
+                if self.nranks == 1:
+                    gloabl_size[0] = len(self.queue)
+                    done = False if gloabl_size else True
+                    continue
+
+
 
                 # work reply?
                 if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_reply'], status=status):
@@ -283,18 +305,7 @@ class WorkThief(MPIClass):
                         i_requested_work = False
                         looped = False
 
-                # make progress on our own work
-                self.progress()
 
-                # Do I need more work?
-                if self.nranks > 1:
-                    if self.need_work() and not i_requested_work:
-                        stealfrom = self.next_steal()
-                        print("rank {:3d} requesing work for {:3d} from {:3d}".format(self.rank, self.rank, stealfrom))
-                        # abuse requests[self.rank]
-                        MPI.Request.Wait(self.requests[self.rank])
-                        self.requests[self.rank] = self.comm.issend(None, dest=stealfrom, tag=self.tags['work_request'])
-                        i_requested_work = True
 
                 # work request?
                 if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_request'], status=status):
@@ -304,18 +315,50 @@ class WorkThief(MPIClass):
 
                     recv_cnt += 1
 
-                    # if we can satisfy the request, lets send the reply first. This makes sure the
+                    # Reply first. This makes sure the
                     # new message is in flight before the sending request completes
+                    MPI.Request.Wait(self.requests[source])
                     if self.excess_work():
-                        MPI.Request.Wait(self.requests[source])
                         self.sendvals[source] = self.split_queue()
                         print("rank {:3d} satisfying work request from {}".format(self.rank, source))
                         self.requests[source] = self.comm.issend(self.sendvals[source],
                                                                  dest=source,
                                                                  tag=self.tags['work_reply'])
+                    elif source not in i_denied:
+                        i_denied.add(source)
+                        self.requests[source] = self.comm.issend(None,
+                                                                 dest=source,
+                                                                 tag=self.tags['work_deny'])
+
+
 
                     # complete the request, if we had work we sent it, otherwise ignore
                     reqval = self.comm.recv(source=source, tag=self.tags['work_request'])
+
+
+
+                # work deny?
+                if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_deny'], status=status):
+                    # probe the source and tag before receiving
+                    source = status.Get_source()
+                    srcs.add(source)
+
+                    recv_cnt += 1
+
+                    denied_me.add(source)
+                    # complete the receive
+                    recvval = self.comm.recv(source=source, tag=self.tags['work_deny'])
+
+
+
+                # Do I need more work?
+                if self.need_work() and not i_requested_work:
+                    stealfrom = self.next_steal()
+                    print("rank {:3d} requesing work for {:3d} from {:3d}".format(self.rank, self.rank, stealfrom))
+                    # abuse requests[self.rank]
+                    MPI.Request.Wait(self.requests[self.rank])
+                    self.requests[self.rank] = self.comm.issend(None, dest=stealfrom, tag=self.tags['work_request'])
+                    i_requested_work = True
 
 
 
