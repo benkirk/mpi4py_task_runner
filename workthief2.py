@@ -31,7 +31,7 @@ class WorkThief(MPIClass):
         self.files = []
         self.excess_threshold =  2
         self.starve_threshold =  0
-        self.sendvals = [None for p in range(0,self.nranks) ] #defaultdict(list)
+        self.sendvals = [list() for p in range(0,self.nranks) ] #defaultdict(list)
         self.assign_requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
         self.steal_requests  = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
         self.init_queue()
@@ -105,28 +105,28 @@ class WorkThief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def init_queue(self):
         if self.i_am_root:
-            rootdir='.'
+            rootdir='.'#'/ephemeral/benkirk'
             self.recurse(rootdir, maxdepth=0)
             sep="-s"*40
             print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
             print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
             print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
 
-            # # populate initial tasks for other ranks (unnecessary complexity)?
-            # excess = self.excess_work()
-            # while excess:
-            #     for dest in range(1,self.nranks):
-            #         if excess:
-            #             self.sendvals[dest].append(self.queue.pop())
-            #             excess = self.excess_work() # still?
+            # populate initial tasks for other ranks (unnecessary complexity)?
+            excess = self.excess_work()
+            while excess:
+                for dest in range(1,self.nranks):
+                    if excess:
+                        self.sendvals[dest].append(self.queue.pop())
+                        excess = self.excess_work() # still?
 
-            # for dest in range(1,self.nranks):
-            #     if self.sendvals[dest]:
-            #         print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
-            #         self.assign_requests[dest] = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
+            for dest in range(1,self.nranks):
+                if self.sendvals[dest]:
+                    print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
+                    self.assign_requests[dest] = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
 
 
-            # print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
         return
 
 
