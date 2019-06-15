@@ -191,8 +191,6 @@ class WorkThief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def execute(self):
 
-        srcs=set()
-
         # intialiaze acounting & misc vals
         my_size     = np.full(1, 1, dtype=np.int)
         gloabl_size = np.full(1, 1, dtype=np.int)
@@ -209,11 +207,11 @@ class WorkThief(MPIClass):
         # enter nonzero size loop
         while gloabl_size[0]:
 
-            # loop specific
+            # inner loop specific
             outer_loop += 1
+            inner_loop = 0
             barrier = None
             nbc_done = False
-            inner_loop = 0
             outstanding_work_request = False
             stole_from[:] = 0; stole_from[self.rank] = 1
 
@@ -235,7 +233,10 @@ class WorkThief(MPIClass):
 
 
                 # work reply?
-                if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_reply'], status=status):
+                if self.comm.iprobe(source=MPI.ANY_SOURCE,
+                                    tag=self.tags['work_reply'],
+                                    status=status):
+
                     self.queue.extend(self.comm.recv(source=status.Get_source(),
                                                      tag=self.tags['work_reply']))
                     outstanding_work_request = False
@@ -249,7 +250,10 @@ class WorkThief(MPIClass):
 
 
                 # work request?
-                if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_request'], status=status):
+                if self.comm.iprobe(source=MPI.ANY_SOURCE,
+                                    tag=self.tags['work_request'],
+                                    status=status):
+
                     source = status.Get_source()
                     recv_cnt += 1
 
@@ -273,7 +277,10 @@ class WorkThief(MPIClass):
 
 
                 # work deny?
-                if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['work_deny'], status=status):
+                if self.comm.iprobe(source=MPI.ANY_SOURCE,
+                                    tag=self.tags['work_deny'],
+                                    status=status):
+
                     recv_cnt += 1
                     outstanding_work_request = False
                     # complete the receive, (empty message)
@@ -289,7 +296,9 @@ class WorkThief(MPIClass):
                         stole_from[stealrank] += 1
                         outstanding_work_request = True
                         #print("rank {:3d} requesing work from {:3d}".format(self.rank, stealrank))
-                        self.steal_requests[stealrank] = self.comm.issend(None, dest=stealrank, tag=self.tags['work_request'])
+                        self.steal_requests[stealrank] = self.comm.issend(None,
+                                                                          dest=stealrank,
+                                                                          tag=self.tags['work_request'])
 
 
                 # ibarrier bits
@@ -307,7 +316,8 @@ class WorkThief(MPIClass):
                 else:
                     nbc_done = MPI.Request.Test(barrier)
 
-            # done with NBC, get current size for global termination criterion
+            # done with NBC, we are at a consistent state across ranks.
+            # get current size for global termination criterion
             my_size[0] = len(self.queue)
             self.comm.Allreduce(my_size, gloabl_size)
 
@@ -321,6 +331,8 @@ class WorkThief(MPIClass):
         # assert idx == MPI.UNDEFINED
         # assert flag
 
+        self.comm.Barrier()
+        sys.stdout.flush()
         # print end message
         for p in range(0,self.nranks):
             self.comm.Barrier()
@@ -333,9 +345,10 @@ class WorkThief(MPIClass):
                                                                                           self.nranks,
                                                                                           max_steps))
                     print("-"*80)
-                print("-r-> rank {:3d} received {:3d} messages in {:5d} steps".format(self.rank,
-                                                                                      recv_cnt,
-                                                                                      recv_loop))
+                print("-r-> rank {:3d} received {:3d} messages in {:5d} inner, {:3d} outer steps".format(self.rank,
+                                                                                                         recv_cnt,
+                                                                                                         recv_loop,
+                                                                                                         outer_loop))
 
         return
 
