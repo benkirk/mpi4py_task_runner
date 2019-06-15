@@ -158,8 +158,8 @@ class WorkThief(MPIClass):
 
         if mid == 0: return None
 
-        front = self.queue[0:mid]
-        back  = self.queue[mid:]
+        # front = self.queue[0:mid]
+        # back  = self.queue[mid:]
 
         # if (len(front) + len(back)) != curlen:
         #     print ("q={},\nf={},\nb={}".format(self.queue, front, back))
