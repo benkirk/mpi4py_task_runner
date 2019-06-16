@@ -209,6 +209,7 @@ class WorkThief(MPIClass):
         recv_loop = 0
         inner_loop = 0
         outer_loop = 0
+        total_loop = 0
 
         tstart = MPI.Wtime()
         status = MPI.Status()
@@ -228,6 +229,7 @@ class WorkThief(MPIClass):
             while not nbc_done:
 
                 inner_loop += 1
+                total_loop += 1
                 recv_loop += 1
 
 
@@ -274,9 +276,13 @@ class WorkThief(MPIClass):
                     MPI.Request.Wait(self.assign_requests[source]) # should be a no-op
                     # default reply, deny
                     self.sendvals[source] = None; rtag = self.tags['work_deny']
-                    # unless I have excess work
+                    # ... unless I have excess work
                     if self.excess_work():
-                        #print("rank {:3d} satisfying work request from {}".format(self.rank, source))
+                        print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {})".format(self.rank,
+                                                                                                     source,
+                                                                                                     outer_loop,
+                                                                                                     inner_loop,
+                                                                                                     total_loop))
                         self.sendvals[source] = self.split_queue(); rtag = self.tags['work_reply']
 
                     self.assign_requests[source] = self.comm.issend(self.sendvals[source],
@@ -333,7 +339,7 @@ class WorkThief(MPIClass):
         # complete
         tstop = MPI.Wtime()
 
-        max_steps = self.comm.allreduce(recv_loop, MPI.MAX)
+        max_steps = self.comm.allreduce(total_loop, MPI.MAX)
 
         # idx, flag, msg = MPI.Request.testany(self.assign_requests)
         # print(idx, flag)
@@ -349,14 +355,14 @@ class WorkThief(MPIClass):
             if p == self.rank and (recv_cnt or self.i_am_root):
                 if self.i_am_root:
                     print("-"*80)
-                    print("{} outer loops completed".format(outer_loop))
-                    print("Completed in {:4f} seconds on {} ranks in max {} steps".format(tstop-tstart,
-                                                                                          self.nranks,
-                                                                                          max_steps))
+                    print("Completed in {:4f} seconds on {} ranks in {} outer loops, max {} steps".format(tstop-tstart,
+                                                                                                          self.nranks,
+                                                                                                          outer_loop,
+                                                                                                          max_steps))
                     print("-"*80)
-                print("-r-> rank {:3d} received {:3d} messages in {:5d} inner, {:3d} outer steps".format(self.rank,
+                print("-r-> rank {:3d} received {:3d} messages in {:6d} total, {:3d} outer steps".format(self.rank,
                                                                                                          recv_cnt,
-                                                                                                         recv_loop,
+                                                                                                         total_loop,
                                                                                                          outer_loop))
 
         return
