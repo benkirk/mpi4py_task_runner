@@ -89,15 +89,19 @@ class WorkThief(MPIClass):
 
         for f in os.listdir(top):
             pathname = os.path.join(top, f)
-            statinfo = os.stat(pathname)
-            if S_ISDIR(statinfo.st_mode):
-                if (depth < maxdepth):
-                    self.recurse(pathname, maxdepth, depth=depth+1)
+            try:
+                statinfo = os.lstat(pathname)
+                if S_ISDIR(statinfo.st_mode):
+                    if (depth < maxdepth):
+                        self.recurse(pathname, maxdepth, depth=depth+1)
+                    else:
+                        self.queue.append(pathname)
                 else:
-                    self.queue.append(pathname)
-            else:
-                #print(statinfo)
-                self.files.append(pathname)
+                    #print(statinfo)
+                    self.files.append(pathname)
+            except:
+                print("skipping {}".format(pathname))
+                continue
         return
 
 
@@ -105,8 +109,13 @@ class WorkThief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def init_queue(self):
         if self.i_am_root:
-            rootdir='.'#'/ephemeral/benkirk'
-            self.recurse(rootdir, maxdepth=0)
+            if len(sys.argv) == 1:
+                rootdir='.'
+                self.recurse(rootdir, maxdepth=0)
+            else:
+                for arg in sys.argv:
+                    if os.path.isdir(arg): self.queue.append(arg)
+
             sep="-s"*40
             print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
             print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
@@ -232,6 +241,11 @@ class WorkThief(MPIClass):
 
 
 
+                # make progress on our own work
+                self.progress(10)
+
+
+
                 # work reply?
                 if self.comm.iprobe(source=MPI.ANY_SOURCE,
                                     tag=self.tags['work_reply'],
@@ -241,11 +255,6 @@ class WorkThief(MPIClass):
                                                      tag=self.tags['work_reply']))
                     outstanding_work_request = False
                     recv_cnt += 1
-
-
-
-                # make progress on our own work
-                self.progress(10)
 
 
 
@@ -267,7 +276,7 @@ class WorkThief(MPIClass):
                     self.sendvals[source] = None; rtag = self.tags['work_deny']
                     # unless I have excess work
                     if self.excess_work():
-                        print("rank {:3d} satisfying work request from {}".format(self.rank, source))
+                        #print("rank {:3d} satisfying work request from {}".format(self.rank, source))
                         self.sendvals[source] = self.split_queue(); rtag = self.tags['work_reply']
 
                     self.assign_requests[source] = self.comm.issend(self.sendvals[source],
