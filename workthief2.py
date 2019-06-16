@@ -210,10 +210,10 @@ class WorkThief(MPIClass):
         total_loop = 0
 
         # how many outstanding work reques to allow
-        max_outstanding_requests    = max((self.nranks - 1), 1)
+        max_outstanding_requests   = 1 #max((self.nranks - 1), 1)
 
-        # number of requests to require before activating NBC ibarrier
-        received_requests_threshold = (self.nranks - 1)
+        # number of requests to expect before activating NBC ibarrier
+        received_requests_threshold = 1 #(self.nranks - 1)
 
         tstart = MPI.Wtime()
         status = MPI.Status()
@@ -238,6 +238,8 @@ class WorkThief(MPIClass):
             outer_loop += 1
             inner_loop = 0
             barrier = None
+            ready_for_barrier = False
+            sent_requests = False
             nbc_done = False
             n_outstanding_requests = 0
             n_received_requests = 0
@@ -262,11 +264,13 @@ class WorkThief(MPIClass):
                 if self.comm.iprobe(source=MPI.ANY_SOURCE,
                                     tag=self.tags['work_reply'],
                                     status=status):
-
-                    self.queue.extend(self.comm.recv(source=status.Get_source(),
-                                                     tag=self.tags['work_reply']))
-                    n_outstanding_requests -= 1 # must be a response to prevous request
                     recv_cnt += 1
+                    n_outstanding_requests -= 1 # must be a response to prevous request
+                    work = self.comm.recv(source=status.Get_source(),
+                                          tag=self.tags['work_reply'])
+                    if work:
+                        self.queue.extend(work)
+
 
 
 
@@ -274,10 +278,10 @@ class WorkThief(MPIClass):
                 if self.comm.iprobe(source=MPI.ANY_SOURCE,
                                     tag=self.tags['work_request'],
                                     status=status):
-
                     source = status.Get_source()
                     recv_cnt += 1
                     n_received_requests += 1
+                    ready_for_barrier = True
 
                     # complete the receive, (empty message)
                     self.comm.recv(source=source, tag=self.tags['work_request'])
@@ -286,7 +290,7 @@ class WorkThief(MPIClass):
                     #assert MPI.Request.Test(self.assign_requests[source]) # should be a no-op
                     MPI.Request.Wait(self.assign_requests[source]) # should be a no-op
                     # default reply, deny request
-                    self.sendvals[source] = None; rtag = self.tags['work_deny']
+                    self.sendvals[source] = None;
                     # ... unless I have excess work
                     if self.excess_work():
                         # print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {})".format(self.rank,
@@ -294,23 +298,11 @@ class WorkThief(MPIClass):
                         #                                                                              outer_loop,
                         #                                                                              inner_loop,
                         #                                                                              total_loop))
-                        self.sendvals[source] = self.split_queue(); rtag = self.tags['work_reply']
+                        self.sendvals[source] = self.split_queue()
 
                     self.assign_requests[source] = self.comm.issend(self.sendvals[source],
                                                                     dest=source,
-                                                                    tag=rtag)
-
-
-
-                # work deny?
-                if self.comm.iprobe(source=MPI.ANY_SOURCE,
-                                    tag=self.tags['work_deny'],
-                                    status=status):
-
-                    recv_cnt += 1
-                    n_outstanding_requests -= 1 # must be a response to prevous request
-                    # complete the receive, (empty message)
-                    self.comm.recv(source=status.Get_source(), tag=self.tags['work_deny'])
+                                                                    tag=self.tags['work_reply'])
 
 
 
@@ -321,6 +313,7 @@ class WorkThief(MPIClass):
                         MPI.Request.Wait(self.steal_requests[stealrank]) # should be a no-op
                         stole_from[stealrank] += 1
                         n_outstanding_requests += 1
+                        sent_requests = True
                         #print("rank {:3d} requesing work from {:3d}".format(self.rank, stealrank))
                         self.steal_requests[stealrank] = self.comm.issend(None,
                                                                           dest=stealrank,
@@ -329,10 +322,12 @@ class WorkThief(MPIClass):
 
                 # don't mess with NBC Ibarrier when we know we have outstanding
                 # messages, or more to come
-                wait_for_outstanding_requests = True if (n_outstanding_requests > 0) else False
-                wait_for_incoming_requests    = True if (n_received_requests == 0)   else False
+                wait_for_outstanding = True if (n_outstanding_requests != 0) else False
+                wait_for_incoming    = True if (n_received_requests == 0) else False
 
-                if not wait_for_incoming_requests and not wait_for_incoming_requests:
+                #print("rank {}, outstandng={}".format(self.rank,n_outstanding_requests))
+
+                if ready_for_barrier:
                     # ibarrier bits
                     if not barrier:
                         # activate barrier when all my sends complete
