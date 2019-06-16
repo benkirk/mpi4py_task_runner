@@ -121,21 +121,21 @@ class WorkThief(MPIClass):
             print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
             print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
 
-            # populate initial tasks for other ranks (unnecessary complexity)?
-            excess = self.excess_work()
-            while excess:
-                for dest in range(1,self.nranks):
-                    if excess:
-                        self.sendvals[dest].append(self.queue.pop())
-                        excess = self.excess_work() # still?
+            # # populate initial tasks for other ranks (unnecessary complexity)?
+            # excess = self.excess_work()
+            # while excess:
+            #     for dest in range(1,self.nranks):
+            #         if excess:
+            #             self.sendvals[dest].append(self.queue.pop())
+            #             excess = self.excess_work() # still?
 
-            for dest in range(1,self.nranks):
-                if self.sendvals[dest]:
-                    print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
-                    self.assign_requests[dest] = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
+            # for dest in range(1,self.nranks):
+            #     if self.sendvals[dest]:
+            #         print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
+            #         self.assign_requests[dest] = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
 
 
-            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+            # print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
         return
 
 
