@@ -2,6 +2,7 @@
 import shutil
 import numpy as np
 import tarfile
+import subprocess
 import os, sys, copy
 from random import randint, seed
 from stat import *
@@ -28,7 +29,7 @@ class WorkThief(MPIClass):
         self.queue = []
         self.dirs = []
         self.files = []
-        self.excess_threshold =  2
+        self.excess_threshold =  1
         self.starve_threshold =  0
 
         self.sendvals = [list() for p in range(0,self.nranks) ] #defaultdict(list)
@@ -82,12 +83,75 @@ class WorkThief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def lfs_recurse(self, top, maxdepth=10**9, depth=0):
+
+        self.dirs.append(top)
+
+        print(top)
+        #--------------------------------
+        # lfs find implementation follows
+        find_dirs   = "cd {} && lfs find . --maxdepth 1 -type d".format(top)
+        find_others = "cd {} && lfs find . --maxdepth 1 ! -type d".format(top)
+
+        # process directories
+        #print(find_dirs)
+        process = subprocess.Popen(find_dirs,
+                                   shell=True,
+                                   stdout=subprocess.PIPE)
+        while True:
+            output = process.stdout.readline()
+            output = output.decode('ascii')
+            if output == '' and process.poll() is not None: break
+            if output:
+                output=output.rstrip('\n')
+                if output is '.': continue
+                output=output.lstrip('./')
+                #print("output={}".format(output))
+                pathname = os.path.join(top, output)
+                #print("pathname={}".format(pathname))
+                if (depth < maxdepth):
+                    self.recurse(pathname, maxdepth, depth=depth+1)
+                else:
+                    self.queue.append(pathname)
+
+        rc = process.poll()
+
+        # process non-directories
+        #print(find_others)
+        process = subprocess.Popen(find_others,
+                                   shell=True,
+                                   stdout=subprocess.PIPE)
+        while True:
+            output = process.stdout.readline()
+            output = output.decode('ascii')
+            if output == '' and process.poll() is not None: break
+            if output:
+                output=output.rstrip('\n')
+                output=output.lstrip('./')
+                #print("output={}".format(output))
+                pathname = os.path.join(top, output)
+                #print("pathname={}".format(pathname))
+                self.files.append(pathname)
+
+        rc = process.poll()
+
+        #print(self.files)
+        #print(self.queue)
+        #----------------------------------
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def recurse(self, top, maxdepth=10**9, depth=0):
 
         self.dirs.append(top)
 
+        #-------------------------------------
+        # python listdir implementation follows
         for f in os.listdir(top):
             pathname = os.path.join(top, f)
+            #print(pathname)
             try:
                 statinfo = os.lstat(pathname)
                 if S_ISDIR(statinfo.st_mode):
@@ -96,11 +160,12 @@ class WorkThief(MPIClass):
                     else:
                         self.queue.append(pathname)
                 else:
-                    #print(statinfo)
                     self.files.append(pathname)
             except:
                 print("skipping {}".format(pathname))
                 continue
+        # end python listdir implementation
+        #----------------------------------
         return
 
 
@@ -161,25 +226,14 @@ class WorkThief(MPIClass):
 
         curlen = len(self.queue)
 
-        split = int(curlen/2)
+        split = int(curlen/4)
 
         if split == 0: return None
-
-        # front = self.queue[0:split]
-        # back  = self.queue[split:]
-
-        # if (len(front) + len(back)) != curlen:
-        #     print ("q={},\nf={},\nb={}".format(self.queue, front, back))
-        #     print (len(front),len(back),(len(front)+len(back)),curlen)
-        #     raise Exception('error splitting queue!')
-
-        # self.queue = back
 
         front = self.queue[0:split]
         self.queue  = self.queue[split:]
 
-        if (len(front) + len(self.queue)) != curlen:
-            raise Exception('error splitting queue!')
+        assert (len(front) + len(self.queue)) == curlen, 'error splitting queue!'
 
         return front
 
@@ -210,7 +264,7 @@ class WorkThief(MPIClass):
         total_loop = 0
 
         # how many outstanding work reques to allow
-        max_outstanding_requests   = 1 #max((self.nranks - 1), 1)
+        max_outstanding_requests   = 2 #max((self.nranks - 1), 1)
 
         # number of requests to expect before activating NBC ibarrier
         received_requests_threshold = 1 #(self.nranks - 1)
@@ -245,6 +299,8 @@ class WorkThief(MPIClass):
             n_received_requests = 0
             stole_from[:] = 0; stole_from[self.rank] = 1
 
+
+
             #-------------------
             # enter NBC work loop
             while not nbc_done:
@@ -256,7 +312,7 @@ class WorkThief(MPIClass):
 
 
                 # make progress on our own work
-                self.progress(10)
+                self.progress(1)
 
 
 
@@ -283,9 +339,6 @@ class WorkThief(MPIClass):
                     n_received_requests += 1
                     ready_for_barrier = True
 
-                    # complete the receive, (empty message)
-                    self.comm.recv(source=source, tag=self.tags['work_request'])
-
                     # Reply.
                     #assert MPI.Request.Test(self.assign_requests[source]) # should be a no-op
                     MPI.Request.Wait(self.assign_requests[source]) # should be a no-op
@@ -293,16 +346,19 @@ class WorkThief(MPIClass):
                     self.sendvals[source] = None;
                     # ... unless I have excess work
                     if self.excess_work():
-                        # print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {})".format(self.rank,
-                        #                                                                              source,
-                        #                                                                              outer_loop,
-                        #                                                                              inner_loop,
-                        #                                                                              total_loop))
                         self.sendvals[source] = self.split_queue()
+                        print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {})".format(self.rank,
+                                                                                                     source,
+                                                                                                     outer_loop,
+                                                                                                     inner_loop,
+                                                                                                     total_loop))
 
                     self.assign_requests[source] = self.comm.issend(self.sendvals[source],
                                                                     dest=source,
                                                                     tag=self.tags['work_reply'])
+
+                    # complete the receive, (empty message)
+                    self.comm.recv(source=source, tag=self.tags['work_request'])
 
 
 
@@ -310,6 +366,7 @@ class WorkThief(MPIClass):
                 if self.need_work() and (n_outstanding_requests < max_outstanding_requests):
                     stealrank = self.next_steal()
                     if stole_from[stealrank] < 1:
+                        #assert MPI.Request.Test(self.steal_requests[stealrank]) # should be a no-op
                         MPI.Request.Wait(self.steal_requests[stealrank]) # should be a no-op
                         stole_from[stealrank] += 1
                         n_outstanding_requests += 1
@@ -325,7 +382,16 @@ class WorkThief(MPIClass):
                 wait_for_outstanding = True if (n_outstanding_requests != 0) else False
                 wait_for_incoming    = True if (n_received_requests == 0) else False
 
-                #print("rank {}, outstandng={}".format(self.rank,n_outstanding_requests))
+                # assert n_outstanding_requests >= 0, "rank {}, outer={}, outstandng={}".format(self.rank,
+                #                                                                               outer_loop,
+                #                                                                               n_outstanding_requests)
+
+                # if sent_requests:
+                #     ready_for_barrier = False if (n_outstanding_requests != 0) else True
+
+                # print("rank {}, outer={}, outstandng={}".format(self.rank,
+                #                                                 outer_loop,
+                #                                                 n_outstanding_requests))
 
                 if ready_for_barrier:
                     # ibarrier bits
