@@ -262,12 +262,16 @@ class WorkThief(MPIClass):
         inner_loop = 0
         outer_loop = 0
         total_loop = 0
+        n_sent_requests = 0
+        n_outstanding_requests = 0
+        n_received_requests = 0
 
-        # how many outstanding work reques to allow
-        max_outstanding_requests   = 2 #max((self.nranks - 1), 1)
+        # how many outstanding work requests to allow
+        max_outstanding_requests = 1 #max((self.nranks - 1), 1)
 
-        # number of requests to expect before activating NBC ibarrier
-        received_requests_threshold = 1 #(self.nranks - 1)
+        # double butffering for requests
+        next_assign_requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
+        next_steal_requests  = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
 
         tstart = MPI.Wtime()
         status = MPI.Status()
@@ -293,10 +297,7 @@ class WorkThief(MPIClass):
             inner_loop = 0
             barrier = None
             ready_for_barrier = False
-            sent_requests = False
             nbc_done = False
-            n_outstanding_requests = 0
-            n_received_requests = 0
             stole_from[:] = 0; stole_from[self.rank] = 1
 
 
@@ -340,20 +341,21 @@ class WorkThief(MPIClass):
                     ready_for_barrier = True
 
                     # Reply.
-                    #assert MPI.Request.Test(self.assign_requests[source]) # should be a no-op
-                    MPI.Request.Wait(self.assign_requests[source]) # should be a no-op
+                    assert MPI.Request.Test(next_assign_requests[source]) # should be a no-op
+                    MPI.Request.Wait(next_assign_requests[source]) # should be a no-op
                     # default reply, deny request
                     self.sendvals[source] = None;
                     # ... unless I have excess work
                     if self.excess_work():
                         self.sendvals[source] = self.split_queue()
-                        print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {})".format(self.rank,
-                                                                                                     source,
-                                                                                                     outer_loop,
-                                                                                                     inner_loop,
-                                                                                                     total_loop))
-
-                    self.assign_requests[source] = self.comm.issend(self.sendvals[source],
+                        label = " ***" if barrier else ""
+                        print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {}){}".format(self.rank,
+                                                                                                       source,
+                                                                                                       outer_loop,
+                                                                                                       inner_loop,
+                                                                                                       total_loop,
+                                                                                                       label))
+                    next_assign_requests[source] = self.comm.issend(self.sendvals[source],
                                                                     dest=source,
                                                                     tag=self.tags['work_reply'])
 
@@ -366,32 +368,22 @@ class WorkThief(MPIClass):
                 if self.need_work() and (n_outstanding_requests < max_outstanding_requests):
                     stealrank = self.next_steal()
                     if stole_from[stealrank] < 1:
-                        #assert MPI.Request.Test(self.steal_requests[stealrank]) # should be a no-op
-                        MPI.Request.Wait(self.steal_requests[stealrank]) # should be a no-op
+                        assert MPI.Request.Test(next_steal_requests[stealrank]) # should be a no-op
+                        MPI.Request.Wait(next_steal_requests[stealrank]) # should be a no-op
                         stole_from[stealrank] += 1
+                        n_sent_requests += 1
                         n_outstanding_requests += 1
-                        sent_requests = True
-                        #print("rank {:3d} requesing work from {:3d}".format(self.rank, stealrank))
-                        self.steal_requests[stealrank] = self.comm.issend(None,
+                        # label = " ***" if barrier else ""
+                        # print("rank {:3d} requesing work from {:3d}{}".format(self.rank,
+                        #                                                       stealrank,
+                        #                                                       label))
+                        next_steal_requests[stealrank] = self.comm.issend(None,
                                                                           dest=stealrank,
                                                                           tag=self.tags['work_request'])
 
-
-                # don't mess with NBC Ibarrier when we know we have outstanding
-                # messages, or more to come
-                wait_for_outstanding = True if (n_outstanding_requests != 0) else False
-                wait_for_incoming    = True if (n_received_requests == 0) else False
-
-                # assert n_outstanding_requests >= 0, "rank {}, outer={}, outstandng={}".format(self.rank,
-                #                                                                               outer_loop,
-                #                                                                               n_outstanding_requests)
-
-                # if sent_requests:
-                #     ready_for_barrier = False if (n_outstanding_requests != 0) else True
-
-                # print("rank {}, outer={}, outstandng={}".format(self.rank,
-                #                                                 outer_loop,
-                #                                                 n_outstanding_requests))
+                assert n_outstanding_requests >= 0, "rank {}, outer={}, outstandng={}".format(self.rank,
+                                                                                              outer_loop,
+                                                                                              n_outstanding_requests)
 
                 if ready_for_barrier:
                     # ibarrier bits
@@ -410,6 +402,10 @@ class WorkThief(MPIClass):
                 # end NBC loop
                 #-------------
 
+            # swap double buffers
+            self.steal_requests,  next_steal_requests  = next_steal_requests,  self.steal_requests
+            self.assign_requests, next_assign_requests = next_assign_requests, self.assign_requests
+
             # done with NBC, we are at a consistent state across ranks.
             # get current size for global termination criterion
             my_size[0] = len(self.queue)
@@ -417,6 +413,7 @@ class WorkThief(MPIClass):
 
         # done nonzero size loop
         #------------------------
+
 
         # complete
         tstop = MPI.Wtime()
