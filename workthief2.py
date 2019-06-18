@@ -254,9 +254,11 @@ class WorkThief(MPIClass):
 
         # intialiaze acounting & misc vals
         my_size     = np.full(1, 1, dtype=np.int)
-        gloabl_size = np.full(1, 1, dtype=np.int)
+        global_size = np.full(1, 1, dtype=np.int)
         stole_from  = np.zeros(self.nranks, dtype=np.int)
 
+        all_done = False
+        allreduce = None
         recv_cnt = 0
         recv_loop = 0
         inner_loop = 0
@@ -279,9 +281,10 @@ class WorkThief(MPIClass):
         #-------------------------
         # single rank optimization
         if self.nranks == 1:
-            while gloabl_size[0]:
+            while self.queue:
                 self.progress(10**9)
-                gloabl_size[0] = len(self.queue)
+            global_size[0] = len(self.queue)
+            all_done = True
         # done single rank optimization
         #------------------------------
 
@@ -290,7 +293,7 @@ class WorkThief(MPIClass):
 
         #------------------------
         # enter nonzero size loop
-        while gloabl_size[0]:
+        while not all_done:
 
             # inner loop specific
             outer_loop += 1
@@ -406,13 +409,23 @@ class WorkThief(MPIClass):
             self.steal_requests,  next_steal_requests  = next_steal_requests,  self.steal_requests
             self.assign_requests, next_assign_requests = next_assign_requests, self.assign_requests
 
+            #---------------------------------------------------------
             # done with NBC, we are at a consistent state across ranks.
-            # get current size for global termination criterion
-            my_size[0] = len(self.queue)
-            self.comm.Allreduce(my_size, gloabl_size)
+            # wait on previous reduciton, if any
+            if allreduce:
+                MPI.Request.Wait(allreduce)
+                allreduce = None
+                all_done = False if global_size[0] else True
 
-        # done nonzero size loop
-        #------------------------
+            # get current size for global termination criterion,
+            # reduce nonblocking
+            my_size[0] = len(self.queue)
+            allreduce = self.comm.Iallreduce(my_size, global_size)
+            # done posting temination check
+            #------------------------------
+
+        # done not all_done loop
+        #-----------------------
 
 
         # complete
