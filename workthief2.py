@@ -31,6 +31,8 @@ class WorkThief(MPIClass):
         self.files = []
         self.num_files = 0
         self.num_dirs = 0
+        self.file_size = 0
+        self.st_modes = defaultdict(int)
         self.excess_threshold =  1
         self.starve_threshold =  0
 
@@ -73,13 +75,113 @@ class WorkThief(MPIClass):
                 #print(nrank {}, found {} files, {} dirs".format(self.rank,self.files,self.dirs))
                 print("rank {}, found {} files, {} dirs".format(self.rank, nfiles, ndirs))
 
-        nfiles_tot = self.comm.allreduce(nfiles, MPI.SUM)
-        ndirs_tot  = self.comm.allreduce(ndirs, MPI.SUM)
+        nfiles_tot = self.comm.allreduce(nfiles,         MPI.SUM)
+        ndirs_tot  = self.comm.allreduce(ndirs,          MPI.SUM)
+        fsize_tot  = self.comm.allreduce(self.file_size, MPI.SUM)
+
         self.comm.Barrier()
         sys.stdout.flush()
         if self.i_am_root:
             print("{}\nTotal found {} files, {} dirs".format(sep,nfiles_tot,ndirs_tot))
+            print("Total File Size = {:.5e} bytes".format(fsize_tot))
+        return
 
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def process_directory(self, dirname, statinfo=None):
+        #self.dirs.append(dirname)
+        self.num_dirs += 1
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def process_file(self, filename, statinfo=None):
+        #self.files.append(filename)
+        self.num_files += 1
+        if statinfo:
+            self.file_size += statinfo.st_size
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def recurse(self, top, maxdepth=10**9, depth=0):
+        self.scandir_recurse(top,maxdepth,depth)
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def scandir_recurse(self, top, maxdepth=10**9, depth=0):
+
+        self.process_directory(top)
+
+        #-------------------------------------
+        # python scandir implementation follows
+        newdirs = []
+        try:
+            for di in os.scandir(top):
+                f        = di.name
+                pathname = di.path
+                statinfo = di.stat(follow_symlinks=False)
+                if statinfo:
+                    self.st_modes[statinfo.st_mode] += 1
+                #try:
+                if di.is_dir(follow_symlinks=False):
+                    if (depth < maxdepth):
+                        self.recurse(pathname, maxdepth, depth=depth+1)
+                    else:
+                        newdirs.append(pathname)
+                else:
+                    self.process_file(pathname, statinfo)
+            self.queue.extend(newdirs)
+        except:
+            print("cannot scan {}".format(top))
+
+        return
+        # end python scandir implementation
+        #----------------------------------
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def listdir_recurse(self, top, maxdepth=10**9, depth=0):
+
+        self.process_directory(top)
+
+        #-------------------------------------
+        # python listdir implementation follows
+        contents = []
+        try:
+            contents = os.listdir(top)
+        except:
+            print("cannot list {}".format(top))
+            return
+
+        newdirs = []
+        for f in contents:
+            pathname = os.path.join(top, f)
+            #print(pathname)
+            try:
+                statinfo = os.lstat(pathname)
+                self.st_modes[statinfo.st_mode] += 1
+                if S_ISDIR(statinfo.st_mode):
+                    if (depth < maxdepth):
+                        self.recurse(pathname, maxdepth, depth=depth+1)
+                    else:
+                        newdirs.append(pathname)
+                else:
+                    self.process_file(pathname, statinfo)
+            except:
+                print("cannot stat {}".format(pathname))
+                continue
+
+        self.queue.extend(newdirs)
+        # end python listdir implementation
+        #----------------------------------
         return
 
 
@@ -140,42 +242,6 @@ class WorkThief(MPIClass):
 
         #print(self.files)
         #print(self.queue)
-        #----------------------------------
-        return
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def recurse(self, top, maxdepth=10**9, depth=0):
-
-        #self.dirs.append(top)
-        self.num_dirs += 1
-
-        #-------------------------------------
-        # python listdir implementation follows
-        contents = []
-        try:
-            contents = os.listdir(top)
-        except:
-            print("cannot list {}".format(top))
-            return
-
-        for f in contents:
-            pathname = os.path.join(top, f)
-            #print(pathname)
-            try:
-                statinfo = os.lstat(pathname)
-                if S_ISDIR(statinfo.st_mode):
-                    if (depth < maxdepth):
-                        self.recurse(pathname, maxdepth, depth=depth+1)
-                    else:
-                        self.queue.append(pathname)
-                else:
-                    self.files.append(pathname)
-            except:
-                print("cannot stat {}".format(pathname))
-                continue
-        # end python listdir implementation
         #----------------------------------
         return
 
@@ -255,7 +321,8 @@ class WorkThief(MPIClass):
     def progress(self,nsteps=1):
         step=0
         while self.queue and step < nsteps:
-            self.recurse(self.queue.pop(), maxdepth=1)
+            last = self.queue.pop() # separate from fn call to allow for lock
+            self.recurse(last, maxdepth=1)
             step += 1
         return
 
@@ -276,8 +343,8 @@ class WorkThief(MPIClass):
         inner_loop = 0
         outer_loop = 0
         total_loop = 0
-        n_sent_requests = 0
-        n_received_requests = 0
+        n_msg_sent = 0
+        n_msg_received = 0
 
         # how many outstanding work requests to allow
         max_outstanding_requests = 1
@@ -349,7 +416,7 @@ class WorkThief(MPIClass):
                                     tag=self.tags['work_request'],
                                     status=status):
                     source = status.Get_source()
-                    n_received_requests += 1
+                    n_msg_received += 1
                     ready_for_barrier = True
 
                     # Reply only if I have excess work.
@@ -378,10 +445,10 @@ class WorkThief(MPIClass):
                 # Do I need more work?
                 if self.need_work():
                     stealrank = self.next_steal()
-                    if  ((stole_from[stealrank] < 1) and
+                    if  ((stole_from[stealrank] < 10) and
                          MPI.Request.Test(next_steal_requests[stealrank])):
                         stole_from[stealrank] += 1
-                        n_sent_requests += 1
+                        n_msg_sent += 1
                         # label = " ***" if barrier else ""
                         # print("rank {:3d} requesing work from {:3d}{}".format(self.rank,
                         #                                                       stealrank,
@@ -455,10 +522,17 @@ class WorkThief(MPIClass):
                                                                                                           outer_loop,
                                                                                                           max_steps))
                     print("-"*80)
-                print("-r-> rank {:3d} received {:3d} messages in {:6d} total, {:3d} outer steps".format(self.rank,
-                                                                                                         recv_cnt,
-                                                                                                         total_loop,
-                                                                                                         outer_loop))
+                print("-r-> rank {:3d} sent {}, recvd {} messages in {:6d} total, {:3d} outer steps".format(self.rank,
+                                                                                                            n_msg_sent,
+                                                                                                            n_msg_received,
+                                                                                                            total_loop,
+                                                                                                            outer_loop))
+
+
+        # sanity checks
+        assert outer_loop is self.comm.allreduce(outer_loop, MPI.MAX), "Inconsistent outer_loop count??"
+        assert outer_loop is self.comm.allreduce(outer_loop, MPI.MIN), "Inconsistent outer_loop count??"
+        #print(self.file_size, self.st_modes)
 
         return
 
