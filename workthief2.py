@@ -4,6 +4,7 @@ import numpy as np
 import tarfile
 import subprocess
 import os, sys, copy
+import threading
 from random import randint, seed
 from stat import *
 from write_rand_data import *
@@ -26,6 +27,9 @@ class WorkThief(MPIClass):
         # self.rank_down = (self.nranks-1) if self.i_am_root else (self.rank-1)
         self.last_steal = -1
 
+        self.thread_done = False
+        self.queue_lock = threading.Lock()
+        self.done_lock = threading.Lock()
         self.queue = []
         self.dirs = []
         self.files = []
@@ -46,6 +50,15 @@ class WorkThief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def queue_size(self):
+        self.queue_lock.acquire()
+        size = len(self.queue)
+        self.queue_lock.release()
+        return size
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def next_steal(self):
         self.last_steal = (self.last_steal + 1) % self.nranks
         if self.last_steal == self.rank:
@@ -61,7 +74,7 @@ class WorkThief(MPIClass):
         sys.stdout.flush()
 
         sep="-"*80
-        assert len(self.queue) == 0
+        assert self.queue_size() == 0
         nfiles = max(len(self.files), self.num_files)
         ndirs  = max(len(self.dirs),  self.num_dirs)
 
@@ -90,7 +103,6 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_directory(self, dirname, statinfo=None):
-        #self.dirs.append(dirname)
         self.num_dirs += 1
         return
 
@@ -98,7 +110,6 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_file(self, filename, statinfo=None):
-        #self.files.append(filename)
         self.num_files += 1
         if statinfo:
             self.file_size += statinfo.st_size
@@ -126,9 +137,8 @@ class WorkThief(MPIClass):
                 f        = di.name
                 pathname = di.path
                 statinfo = None #di.stat(follow_symlinks=False)
-                if statinfo:
+                if statinfo: # increment st_mode counts
                     self.st_modes[statinfo.st_mode] += 1
-                #try:
                 if di.is_dir(follow_symlinks=False):
                     if (depth < maxdepth):
                         self.recurse(pathname, maxdepth, depth=depth+1)
@@ -136,7 +146,11 @@ class WorkThief(MPIClass):
                         newdirs.append(pathname)
                 else:
                     self.process_file(pathname, statinfo)
+
+            # append to the queue, safely
+            self.queue_lock.acquire()
             self.queue.extend(newdirs)
+            self.queue_lock.release()
         except:
             print("cannot scan {}".format(top))
 
@@ -179,71 +193,74 @@ class WorkThief(MPIClass):
                 print("cannot stat {}".format(pathname))
                 continue
 
+        # append to the queue, safely
+        self.queue_lock.acquire()
         self.queue.extend(newdirs)
+        self.queue_lock.release()
         # end python listdir implementation
         #----------------------------------
         return
 
 
 
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def lfs_recurse(self, top, maxdepth=10**9, depth=0):
+    # #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # def lfs_recurse(self, top, maxdepth=10**9, depth=0):
 
-        self.dirs.append(top)
+    #     self.dirs.append(top)
 
-        print(top)
-        #--------------------------------
-        # lfs find implementation follows
-        find_dirs   = "cd {} && lfs find . --maxdepth 1 -type d".format(top)
-        find_others = "cd {} && lfs find . --maxdepth 1 ! -type d".format(top)
+    #     print(top)
+    #     #--------------------------------
+    #     # lfs find implementation follows
+    #     find_dirs   = "cd {} && lfs find . --maxdepth 1 -type d".format(top)
+    #     find_others = "cd {} && lfs find . --maxdepth 1 ! -type d".format(top)
 
-        # process directories
-        #print(find_dirs)
-        process = subprocess.Popen(find_dirs,
-                                   shell=True,
-                                   stdout=subprocess.PIPE)
-        while True:
-            output = process.stdout.readline()
-            output = output.decode('ascii')
-            if output == '' and process.poll() is not None: break
-            if output:
-                output=output.rstrip('\n')
-                if output is '.': continue
-                output=output.lstrip('./')
-                #print("output={}".format(output))
-                pathname = os.path.join(top, output)
-                #print("pathname={}".format(pathname))
-                if (depth < maxdepth):
-                    self.recurse(pathname, maxdepth, depth=depth+1)
-                else:
-                    self.queue.append(pathname)
+    #     # process directories
+    #     #print(find_dirs)
+    #     process = subprocess.Popen(find_dirs,
+    #                                shell=True,
+    #                                stdout=subprocess.PIPE)
+    #     while True:
+    #         output = process.stdout.readline()
+    #         output = output.decode('ascii')
+    #         if output == '' and process.poll() is not None: break
+    #         if output:
+    #             output=output.rstrip('\n')
+    #             if output is '.': continue
+    #             output=output.lstrip('./')
+    #             #print("output={}".format(output))
+    #             pathname = os.path.join(top, output)
+    #             #print("pathname={}".format(pathname))
+    #             if (depth < maxdepth):
+    #                 self.recurse(pathname, maxdepth, depth=depth+1)
+    #             else:
+    #                 self.queue.append(pathname)
 
-        rc = process.poll()
+    #     rc = process.poll()
 
-        # process non-directories
-        #print(find_others)
-        process = subprocess.Popen(find_others,
-                                   shell=True,
-                                   stdout=subprocess.PIPE)
-        while True:
-            output = process.stdout.readline()
-            output = output.decode('ascii')
-            if output == '' and process.poll() is not None: break
-            if output:
-                output=output.rstrip('\n')
-                output=output.lstrip('./')
-                #print("output={}".format(output))
-                pathname = os.path.join(top, output)
-                #print("pathname={}".format(pathname))
-                #self.files.append(pathname)
-                self.num_files += 1
+    #     # process non-directories
+    #     #print(find_others)
+    #     process = subprocess.Popen(find_others,
+    #                                shell=True,
+    #                                stdout=subprocess.PIPE)
+    #     while True:
+    #         output = process.stdout.readline()
+    #         output = output.decode('ascii')
+    #         if output == '' and process.poll() is not None: break
+    #         if output:
+    #             output=output.rstrip('\n')
+    #             output=output.lstrip('./')
+    #             #print("output={}".format(output))
+    #             pathname = os.path.join(top, output)
+    #             #print("pathname={}".format(pathname))
+    #             #self.files.append(pathname)
+    #             self.num_files += 1
 
-        rc = process.poll()
+    #     rc = process.poll()
 
-        #print(self.files)
-        #print(self.queue)
-        #----------------------------------
-        return
+    #     #print(self.files)
+    #     #print(self.queue)
+    #     #----------------------------------
+    #     return
 
 
 
@@ -259,7 +276,7 @@ class WorkThief(MPIClass):
                         self.recurse(arg, maxdepth=0)
 
             sep="-s"*40
-            print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+            print("{}\ndir queue, {} items=\n{}".format(sep, self.queue_size(), self.queue))
             # print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
             # print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
 
@@ -277,7 +294,7 @@ class WorkThief(MPIClass):
             # #         self.assign_requests[dest] = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
 
 
-            # # print("{}\ndir queue, {} items=\n{}".format(sep, len(self.queue), self.queue))
+            # # print("{}\ndir queue, {} items=\n{}".format(sep, self.queue_size(), self.queue))
         return
 
 
@@ -285,15 +302,15 @@ class WorkThief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def excess_work(self):
         if self.nranks == 1: return False # no excess work with no helpers!
-        if len(self.queue) > self.excess_threshold:
-            return (len(self.queue) - self.excess_threshold)
+        if self.queue_size() > self.excess_threshold:
+            return (self.queue_size() - self.excess_threshold)
         return False
 
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def need_work(self):
-        if len(self.queue) <= self.starve_threshold:
+        if self.queue_size() <= self.starve_threshold:
             return True
         return False
 
@@ -301,17 +318,19 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def split_queue(self):
+        curlen = self.queue_size()
+        split  = int(curlen/4)
 
-        curlen = len(self.queue)
+        if split == 0:
+            return None
 
-        split = int(curlen/4)
-
-        if split == 0: return None
-
+        # split the queue under a lock
+        self.queue_lock.acquire()
         front = self.queue[0:split]
         self.queue  = self.queue[split:]
+        self.queue_lock.release()
 
-        assert (len(front) + len(self.queue)) == curlen, 'error splitting queue!'
+        assert (len(front) + self.queue_size()) == curlen, 'error splitting queue!'
 
         return front
 
@@ -321,9 +340,34 @@ class WorkThief(MPIClass):
     def progress(self,nsteps=1):
         step=0
         while self.queue and step < nsteps:
-            last = self.queue.pop() # separate from fn call to allow for lock
+            # pop the queue under a lock
+            self.queue_lock.acquire()
+            last = self.queue.pop() # separate from recurse fn call to allow for locking
+            self.queue_lock.release()
             self.recurse(last, maxdepth=1)
             step += 1
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def progress_daemon(self):
+        th_local_done = False
+        self.thread_done = False
+        while not th_local_done:
+            if self.queue_size():
+                # pop the queue under a lock
+                self.queue_lock.acquire()
+                last = self.queue.pop() # separate from recurse fn call to allow for locking
+                self.queue_lock.release()
+                self.recurse(last, maxdepth=1)
+
+            else:
+                sleep(0.100)
+
+            self.done_lock.acquire()
+            th_local_done = self.thread_done
+            self.done_lock.release()
         return
 
 
@@ -362,17 +406,19 @@ class WorkThief(MPIClass):
         if self.nranks == 1:
             while self.queue:
                 self.progress(10**9)
-            global_size[0] = len(self.queue)
+            global_size[0] = self.queue_size()
             all_done = True
         # done single rank optimization
         #------------------------------
 
-
+        # thread = threading.Thread(target=self.progress_daemon, args=())
+        # thread.start()
 
 
         #------------------------
         # enter nonzero size loop
         while not all_done:
+
 
             # inner loop specific
             outer_loop += 1
@@ -407,8 +453,11 @@ class WorkThief(MPIClass):
                     work = self.comm.recv(source=status.Get_source(),
                                           tag=self.tags['work_reply'])
 
-                    if work: self.queue.extend(work)
-
+                    # append to the queue, safely
+                    if work:
+                        self.queue_lock.acquire()
+                        self.queue.extend(work)
+                        self.queue_lock.release()
 
 
 
@@ -421,21 +470,20 @@ class WorkThief(MPIClass):
                     ready_for_barrier = True
 
                     # Reply only if I have excess work.
-                    if self.excess_work():
+                    self.sendvals[source] = self.split_queue()
+                    if self.sendvals[source]:
                         #assert MPI.Request.Test(next_assign_requests[source]) # should be a no-op
                         MPI.Request.Wait(next_assign_requests[source]) # should be a no-op
-                        self.sendvals[source] = self.split_queue()
-                        if self.sendvals[source]:
-                            label = " ***" if barrier else ""
-                            print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {}){}".format(self.rank,
-                                                                                                           source,
-                                                                                                           outer_loop,
-                                                                                                           inner_loop,
-                                                                                                           total_loop,
-                                                                                                           label))
-                            next_assign_requests[source] = self.comm.issend(self.sendvals[source],
-                                                                            dest=source,
-                                                                            tag=self.tags['work_reply'])
+                        label = " ***" if barrier else ""
+                        print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {}){}".format(self.rank,
+                                                                                                       source,
+                                                                                                       outer_loop,
+                                                                                                       inner_loop,
+                                                                                                       total_loop,
+                                                                                                       label))
+                        next_assign_requests[source] = self.comm.issend(self.sendvals[source],
+                                                                        dest=source,
+                                                                        tag=self.tags['work_reply'])
 
                     recv_cnt += 1 # complete the receive, (empty message)
                     self.comm.recv(source=source,
@@ -488,16 +536,22 @@ class WorkThief(MPIClass):
                 allreduce = None
                 all_done = False if global_size[0] else True
 
+
             # get current size for global termination criterion,
             # reduce nonblocking
-            my_size[0] = len(self.queue)
+            my_size[0] = self.queue_size()
             allreduce = self.comm.Iallreduce(my_size, global_size)
             # done posting temination check
             #------------------------------
 
+
         # done not all_done loop
         #-----------------------
 
+        # self.done_lock.acquire()
+        # self.thread_done = True
+        # self.done_lock.release()
+        # thread.join()
 
         # complete
         tstop = MPI.Wtime()
@@ -531,8 +585,8 @@ class WorkThief(MPIClass):
 
 
         # sanity checks
-        assert outer_loop is self.comm.allreduce(outer_loop, MPI.MAX), "Inconsistent outer_loop count??"
-        assert outer_loop is self.comm.allreduce(outer_loop, MPI.MIN), "Inconsistent outer_loop count??"
+        #assert outer_loop is self.comm.allreduce(outer_loop, MPI.MAX), "Inconsistent outer_loop count??"
+        #assert outer_loop is self.comm.allreduce(outer_loop, MPI.MIN), "Inconsistent outer_loop count??"
         #print(self.file_size, self.st_modes)
 
         return
