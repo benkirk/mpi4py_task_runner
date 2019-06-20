@@ -339,7 +339,7 @@ class WorkThief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def progress(self,nsteps=1):
         step=0
-        while self.queue and step < nsteps:
+        while self.queue_size() and step < nsteps:
             # pop the queue under a lock
             self.queue_lock.acquire()
             last = self.queue.pop() # separate from recurse fn call to allow for locking
