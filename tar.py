@@ -12,6 +12,16 @@ class TarFiles(Base):
     def __init__(self):
         self.otar = None
         Base.__init__(self)
+        self.run_threaded = True
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __del__(self):
+        if self.otar:
+            self.otar.close()
+        Base.__del__(self)
         return
 
 
