@@ -125,7 +125,7 @@ class WorkThief(MPIClass):
             for di in os.scandir(top):
                 f        = di.name
                 pathname = di.path
-                statinfo = di.stat(follow_symlinks=False)
+                statinfo = None #di.stat(follow_symlinks=False)
                 if statinfo:
                     self.st_modes[statinfo.st_mode] += 1
                 #try:
@@ -348,6 +348,7 @@ class WorkThief(MPIClass):
 
         # how many outstanding work requests to allow
         max_outstanding_requests = 1
+        max_requests_per_peer = 10
 
         # double butffering for requests
         next_assign_requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
@@ -394,7 +395,7 @@ class WorkThief(MPIClass):
 
 
                 # make progress on our own work
-                self.progress(10)
+                self.progress(1)
 
 
 
@@ -436,16 +437,16 @@ class WorkThief(MPIClass):
                                                                             dest=source,
                                                                             tag=self.tags['work_reply'])
 
-                    # complete the receive, (empty message)
-                    recv_cnt += 1
-                    self.comm.recv(source=source, tag=self.tags['work_request'])
+                    recv_cnt += 1 # complete the receive, (empty message)
+                    self.comm.recv(source=source,
+                                   tag=self.tags['work_request'])
 
 
 
                 # Do I need more work?
                 if self.need_work():
                     stealrank = self.next_steal()
-                    if  ((stole_from[stealrank] < 10) and
+                    if  ((stole_from[stealrank] < max_requests_per_peer) and
                          MPI.Request.Test(next_steal_requests[stealrank])):
                         stole_from[stealrank] += 1
                         n_msg_sent += 1
