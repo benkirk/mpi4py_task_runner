@@ -27,9 +27,10 @@ class WorkThief(MPIClass):
         # self.rank_down = (self.nranks-1) if self.i_am_root else (self.rank-1)
         self.last_steal = -1
 
+        self.run_threaded = True
         self.thread_done = False
         self.queue_lock = threading.Lock()
-        self.done_lock = threading.Lock()
+        self.done_lock  = threading.Lock()
         self.queue = []
         self.dirs = []
         self.files = []
@@ -40,7 +41,7 @@ class WorkThief(MPIClass):
         self.excess_threshold =  1
         self.starve_threshold =  0
 
-        self.sendvals = [list() for p in range(0,self.nranks) ] #defaultdict(list)
+        self.sendvals = [list() for p in range(0,self.nranks) ]
         self.assign_requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
         self.steal_requests  = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
         self.init_queue()
@@ -51,10 +52,31 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def queue_size(self):
+        # query size, under a lock
         self.queue_lock.acquire()
         size = len(self.queue)
         self.queue_lock.release()
         return size
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def queue_pop(self):
+        # pop queue, under a lock
+        self.queue_lock.acquire()
+        val = self.queue.pop()
+        self.queue_lock.release()
+        return val
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def queue_extend(self,listlike):
+        # extend queue, under a lock
+        self.queue_lock.acquire()
+        self.queue.extend(listlike)
+        self.queue_lock.release()
+        return
 
 
 
@@ -148,9 +170,7 @@ class WorkThief(MPIClass):
                     self.process_file(pathname, statinfo)
 
             # append to the queue, safely
-            self.queue_lock.acquire()
-            self.queue.extend(newdirs)
-            self.queue_lock.release()
+            self.queue_extend(newdirs)
         except:
             print("cannot scan {}".format(top))
 
@@ -194,9 +214,7 @@ class WorkThief(MPIClass):
                 continue
 
         # append to the queue, safely
-        self.queue_lock.acquire()
-        self.queue.extend(newdirs)
-        self.queue_lock.release()
+        self.queue_extend(newdirs)
         # end python listdir implementation
         #----------------------------------
         return
@@ -324,13 +342,14 @@ class WorkThief(MPIClass):
         if split == 0:
             return None
 
-        # split the queue under a lock
+        # split the queue, under a lock
         self.queue_lock.acquire()
         front = self.queue[0:split]
-        self.queue  = self.queue[split:]
+        self.queue = self.queue[split:]
+        newlen = len(self.queue)
         self.queue_lock.release()
 
-        assert (len(front) + self.queue_size()) == curlen, 'error splitting queue!'
+        assert (len(front) + newlen) == curlen, 'error splitting queue!'
 
         return front
 
@@ -340,11 +359,8 @@ class WorkThief(MPIClass):
     def progress(self,nsteps=1):
         step=0
         while self.queue_size() and step < nsteps:
-            # pop the queue under a lock
-            self.queue_lock.acquire()
-            last = self.queue.pop() # separate from recurse fn call to allow for locking
-            self.queue_lock.release()
-            self.recurse(last, maxdepth=1)
+            self.recurse(self.queue_pop(),
+                         maxdepth=1)
             step += 1
         return
 
@@ -352,22 +368,11 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def progress_daemon(self):
-        th_local_done = False
         self.thread_done = False
-        while not th_local_done:
-            if self.queue_size():
-                # pop the queue under a lock
-                self.queue_lock.acquire()
-                last = self.queue.pop() # separate from recurse fn call to allow for locking
-                self.queue_lock.release()
-                self.recurse(last, maxdepth=1)
-
-            else:
-                sleep(0.100)
-
-            self.done_lock.acquire()
-            th_local_done = self.thread_done
-            self.done_lock.release()
+        while not self.thread_done:
+            while self.queue_size():
+                self.recurse(self.queue_pop(),
+                             maxdepth=1)
         return
 
 
@@ -380,39 +385,42 @@ class WorkThief(MPIClass):
         global_size = np.full(1, 1, dtype=np.int)
         stole_from  = np.zeros(self.nranks, dtype=np.int)
 
-        all_done = False
-        allreduce = None
-        recv_cnt = 0
-        recv_loop = 0
+        all_done   = False
+        allreduce  = None
+        recv_cnt   = 0
+        recv_loop  = 0
         inner_loop = 0
         outer_loop = 0
         total_loop = 0
         n_msg_sent = 0
-        n_msg_received = 0
+        n_msg_recv = 0
 
         # how many outstanding work requests to allow
         max_outstanding_requests = 1
-        max_requests_per_peer = 10
+        max_requests_per_peer = 1
 
         # double butffering for requests
-        next_assign_requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
-        next_steal_requests  = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
+        next_assign_requests = [ MPI.REQUEST_NULL for p in range(0,self.nranks) ]
+        next_steal_requests  = [ MPI.REQUEST_NULL for p in range(0,self.nranks) ]
 
+        self.comm.Barrier()
         tstart = MPI.Wtime()
         status = MPI.Status()
 
         #-------------------------
         # single rank optimization
         if self.nranks == 1:
-            while self.queue:
+            while self.queue_size():
                 self.progress(10**9)
             global_size[0] = self.queue_size()
             all_done = True
         # done single rank optimization
         #------------------------------
 
-        # thread = threading.Thread(target=self.progress_daemon, args=())
-        # thread.start()
+        thread = None
+        if self.run_threaded:
+            thread = threading.Thread(target=self.progress_daemon, args=())
+            thread.start()
 
 
         #------------------------
@@ -425,7 +433,7 @@ class WorkThief(MPIClass):
             inner_loop = 0
             barrier = None
             ready_for_barrier = False
-            nbc_done = False
+            nbc_done = all_done
             stole_from[:] = 0; stole_from[self.rank] = 1
 
 
@@ -441,7 +449,8 @@ class WorkThief(MPIClass):
 
 
                 # make progress on our own work
-                self.progress(1)
+                if not self.run_threaded:
+                    self.progress(1)
 
 
 
@@ -455,9 +464,7 @@ class WorkThief(MPIClass):
 
                     # append to the queue, safely
                     if work:
-                        self.queue_lock.acquire()
-                        self.queue.extend(work)
-                        self.queue_lock.release()
+                        self.queue_extend(work)
 
 
 
@@ -466,7 +473,7 @@ class WorkThief(MPIClass):
                                     tag=self.tags['work_request'],
                                     status=status):
                     source = status.Get_source()
-                    n_msg_received += 1
+                    n_msg_recv += 1
                     ready_for_barrier = True
 
                     # Reply only if I have excess work.
@@ -548,20 +555,11 @@ class WorkThief(MPIClass):
         # done not all_done loop
         #-----------------------
 
-        # self.done_lock.acquire()
-        # self.thread_done = True
-        # self.done_lock.release()
-        # thread.join()
 
         # complete
         tstop = MPI.Wtime()
 
         max_steps = self.comm.allreduce(total_loop, MPI.MAX)
-
-        # idx, flag, msg = MPI.Request.testany(self.assign_requests)
-        # print(idx, flag)
-        # assert idx == MPI.UNDEFINED
-        # assert flag
 
         self.comm.Barrier()
         sys.stdout.flush()
@@ -577,17 +575,20 @@ class WorkThief(MPIClass):
                                                                                                           outer_loop,
                                                                                                           max_steps))
                     print("-"*80)
-                print("-r-> rank {:3d} sent {}, recvd {} messages in {:6d} total, {:3d} outer steps".format(self.rank,
-                                                                                                            n_msg_sent,
-                                                                                                            n_msg_received,
-                                                                                                            total_loop,
-                                                                                                            outer_loop))
+                print("-r-> rank {:3d} sent {:5d}, recv {:5d} messages in {:6d} total, {:3d} outer steps".format(self.rank,
+                                                                                                                 n_msg_sent,
+                                                                                                                 n_msg_recv,
+                                                                                                                 total_loop,
+                                                                                                                 outer_loop))
 
 
         # sanity checks
-        #assert outer_loop is self.comm.allreduce(outer_loop, MPI.MAX), "Inconsistent outer_loop count??"
-        #assert outer_loop is self.comm.allreduce(outer_loop, MPI.MIN), "Inconsistent outer_loop count??"
+        assert outer_loop is self.comm.allreduce(outer_loop, MPI.MAX), "Inconsistent outer_loop count??"
+        assert outer_loop is self.comm.allreduce(outer_loop, MPI.MIN), "Inconsistent outer_loop count??"
         #print(self.file_size, self.st_modes)
+
+        if thread:
+            self.thread_done = True; thread.join()
 
         return
 
