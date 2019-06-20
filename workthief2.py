@@ -29,8 +29,7 @@ class WorkThief(MPIClass):
 
         self.run_threaded = True
         self.thread_done = False
-        self.queue_lock = threading.Lock()
-        self.done_lock  = threading.Lock()
+        self.queue_lock = threading.RLock()
         self.queue = []
         self.dirs = []
         self.files = []
@@ -44,6 +43,8 @@ class WorkThief(MPIClass):
         self.sendvals = [list() for p in range(0,self.nranks) ]
         self.assign_requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
         self.steal_requests  = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
+
+        # inialize the queue from input
         self.init_queue()
 
         return
@@ -418,9 +419,9 @@ class WorkThief(MPIClass):
         #------------------------------
 
         thread = None
-        if self.run_threaded:
-            thread = threading.Thread(target=self.progress_daemon, args=())
-            thread.start()
+        # if self.run_threaded:
+        #     thread = threading.Thread(target=self.progress_daemon, args=())
+        #     thread.start()
 
 
         #------------------------
@@ -449,9 +450,14 @@ class WorkThief(MPIClass):
 
 
                 # make progress on our own work
-                if not self.run_threaded:
-                    self.progress(1)
+                # if not self.run_threaded:
+                #     self.progress(1)
 
+                if self.run_threaded:
+                    thread = threading.Thread(target=self.progress, args=())
+                    thread.start()
+                else:
+                    self.progress(1)
 
 
                 # work reply?
@@ -527,6 +533,10 @@ class WorkThief(MPIClass):
                     # otherwise see if barrier completed
                     else:
                         nbc_done = MPI.Request.Test(barrier)
+
+                if thread:
+                    thread.join()
+                    thread = None
 
                 # end NBC loop
                 #-------------
