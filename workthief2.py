@@ -5,6 +5,7 @@ import tarfile
 import subprocess
 import os, sys, copy
 import threading
+import queue
 from random import randint, seed
 from stat import *
 from write_rand_data import *
@@ -28,10 +29,8 @@ class WorkThief(MPIClass):
         self.last_steal = -1
 
         self.wt_verbose = False
-        self.run_threaded = False
-        self.thread_done = False
-        self.queue_lock = threading.RLock()
-        self.queue = []
+        self.run_threaded = True
+        self.queue = queue.Queue()
         self.dirs = []
         self.files = []
         self.num_files = 0
@@ -61,20 +60,17 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def queue_size(self):
-        # query size, under a lock
-        self.queue_lock.acquire()
-        size = len(self.queue)
-        self.queue_lock.release()
-        return size
+        # query size
+        return self.queue.qsize()
 
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def queue_pop(self):
-        # pop queue, under a lock
-        self.queue_lock.acquire()
-        val = self.queue.pop()
-        self.queue_lock.release()
+        # pop queue
+        #val = copy.deepcopy(self.queue.get())
+        val = self.queue.get()
+        #self.queue.task_done()
         return val
 
 
@@ -82,9 +78,9 @@ class WorkThief(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def queue_extend(self,listlike):
         # extend queue, under a lock
-        self.queue_lock.acquire()
-        self.queue.extend(listlike)
-        self.queue_lock.release()
+        for item in listlike:
+            assert item
+            self.queue.put(item)
         return
 
 
@@ -304,24 +300,6 @@ class WorkThief(MPIClass):
 
             sep="-s"*40
             print("{}\ndir queue, {} items=\n{}".format(sep, self.queue_size(), self.queue))
-            # print("{}\ndirs found {} items=\n{}".format(sep, len(self.dirs),  self.dirs))
-            # print("{}\nfiles found {} items=\n{}".format(sep,len(self.files), self.files))
-
-            # # # populate initial tasks for other ranks (unnecessary complexity)?
-            # # excess = self.excess_work()
-            # # while excess:
-            # #     for dest in range(1,self.nranks):
-            # #         if excess:
-            # #             self.sendvals[dest].append(self.queue.pop())
-            # #             excess = self.excess_work() # still?
-
-            # # for dest in range(1,self.nranks):
-            # #     if self.sendvals[dest]:
-            # #         print("sending {} entries '{}' to rank {}".format(len(self.sendvals[dest]),self.sendvals[dest],dest))
-            # #         self.assign_requests[dest] = self.comm.issend(self.sendvals[dest], dest=dest, tag=self.tags['work_reply'])
-
-
-            # # print("{}\ndir queue, {} items=\n{}".format(sep, self.queue_size(), self.queue))
         return
 
 
@@ -345,23 +323,14 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def queue_split(self):
-        curlen = self.queue_size()
-        split  = int(curlen/4)
+        part = []
+        while 2*len(part) < self.queue_size():
+            part.append(self.queue_pop())
 
-        if split == 0:
+        if not part:
             return None
 
-        # split the queue, under a lock
-        self.queue_lock.acquire()
-        front = self.queue[0:split]
-        flen  = len(front)
-        self.queue = self.queue[split:]
-        blen = len(self.queue)
-
-        assert (flen + blen) == curlen, 'error splitting queue!'
-        self.queue_lock.release()
-
-        return front
+        return part
 
 
 
@@ -378,13 +347,11 @@ class WorkThief(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def progress_daemon(self):
-        self.thread_done = False
-        while not self.thread_done:
-            while self.queue_size():
-                last = self.queue_pop()
-                self.recurse(last,
-                             maxdepth=1)
-
+        while True:
+            item = self.queue_pop()
+            if item is None: break
+            self.recurse(item,
+                         maxdepth=1)
         return
 
 
@@ -408,7 +375,7 @@ class WorkThief(MPIClass):
 
         # how many outstanding work requests to allow
         max_outstanding_requests = 1
-        max_requests_per_peer = 1
+        max_requests_per_peer = 20
 
         # double butffering for requests
         next_assign_requests = [ MPI.REQUEST_NULL for p in range(0,self.nranks) ]
@@ -428,15 +395,17 @@ class WorkThief(MPIClass):
         # done single rank optimization
         #------------------------------
 
-        thread = None
-        if self.run_threaded:
-            thread = threading.Thread(target=self.progress_daemon)
-            thread.start()
 
 
         #------------------------
         # enter nonzero size loop
         while not all_done:
+
+
+            thread = None
+            if self.run_threaded:
+                thread = threading.Thread(target=self.progress_daemon)
+                thread.start()
 
 
             # inner loop specific
@@ -459,12 +428,11 @@ class WorkThief(MPIClass):
 
 
                 # make progress on our own work
-                # if self.run_threaded:
-                #     thread = threading.Thread(target=self.progress, args=())
-                #     thread.start()
-
                 if not thread:
                     self.progress(1)
+                # else:
+                #     thread = threading.Thread(target=self.progress)
+                #     thread.start()
 
 
                 # work reply?
@@ -542,16 +510,19 @@ class WorkThief(MPIClass):
                     else:
                         nbc_done = MPI.Request.Test(barrier)
 
-                # if thread:
-                #     thread.join()
-                #     thread = None
-
                 # end NBC loop
                 #-------------
 
             # swap double buffers
             self.steal_requests,  next_steal_requests  = next_steal_requests,  self.steal_requests
             self.assign_requests, next_assign_requests = next_assign_requests, self.assign_requests
+
+            # signal and wait for thread
+            if thread:
+                self.queue.put(None);
+                thread.join()
+                thread = None
+
 
             #---------------------------------------------------------
             # done with NBC, we are at a consistent state across ranks.
@@ -575,7 +546,7 @@ class WorkThief(MPIClass):
 
         # signal and wait for thread
         if thread:
-            self.thread_done = True;
+            self.queue.put(None);
             thread.join()
 
 
