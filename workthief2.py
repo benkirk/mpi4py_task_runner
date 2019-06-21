@@ -27,7 +27,8 @@ class WorkThief(MPIClass):
         # self.rank_down = (self.nranks-1) if self.i_am_root else (self.rank-1)
         self.last_steal = -1
 
-        self.run_threaded = True
+        self.wt_verbose = False
+        self.run_threaded = False
         self.thread_done = False
         self.queue_lock = threading.RLock()
         self.queue = []
@@ -47,6 +48,13 @@ class WorkThief(MPIClass):
         # inialize the queue from input
         self.init_queue()
 
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def __del__(self):
+        MPIClass.__del__(self)
         return
 
 
@@ -336,7 +344,7 @@ class WorkThief(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def split_queue(self):
+    def queue_split(self):
         curlen = self.queue_size()
         split  = int(curlen/4)
 
@@ -346,11 +354,12 @@ class WorkThief(MPIClass):
         # split the queue, under a lock
         self.queue_lock.acquire()
         front = self.queue[0:split]
+        flen  = len(front)
         self.queue = self.queue[split:]
-        newlen = len(self.queue)
-        self.queue_lock.release()
+        blen = len(self.queue)
 
-        assert (len(front) + newlen) == curlen, 'error splitting queue!'
+        assert (flen + blen) == curlen, 'error splitting queue!'
+        self.queue_lock.release()
 
         return front
 
@@ -372,8 +381,10 @@ class WorkThief(MPIClass):
         self.thread_done = False
         while not self.thread_done:
             while self.queue_size():
-                self.recurse(self.queue_pop(),
+                last = self.queue_pop()
+                self.recurse(last,
                              maxdepth=1)
+
         return
 
 
@@ -389,7 +400,6 @@ class WorkThief(MPIClass):
         all_done   = False
         allreduce  = None
         recv_cnt   = 0
-        recv_loop  = 0
         inner_loop = 0
         outer_loop = 0
         total_loop = 0
@@ -419,9 +429,9 @@ class WorkThief(MPIClass):
         #------------------------------
 
         thread = None
-        # if self.run_threaded:
-        #     thread = threading.Thread(target=self.progress_daemon, args=())
-        #     thread.start()
+        if self.run_threaded:
+            thread = threading.Thread(target=self.progress_daemon)
+            thread.start()
 
 
         #------------------------
@@ -445,18 +455,15 @@ class WorkThief(MPIClass):
 
                 inner_loop += 1
                 total_loop += 1
-                recv_loop += 1
 
 
 
                 # make progress on our own work
-                # if not self.run_threaded:
-                #     self.progress(1)
+                # if self.run_threaded:
+                #     thread = threading.Thread(target=self.progress, args=())
+                #     thread.start()
 
-                if self.run_threaded:
-                    thread = threading.Thread(target=self.progress, args=())
-                    thread.start()
-                else:
+                if not thread:
                     self.progress(1)
 
 
@@ -483,17 +490,18 @@ class WorkThief(MPIClass):
                     ready_for_barrier = True
 
                     # Reply only if I have excess work.
-                    self.sendvals[source] = self.split_queue()
-                    if self.sendvals[source]:
-                        #assert MPI.Request.Test(next_assign_requests[source]) # should be a no-op
-                        MPI.Request.Wait(next_assign_requests[source]) # should be a no-op
-                        label = " ***" if barrier else ""
-                        print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {}){}".format(self.rank,
-                                                                                                       source,
-                                                                                                       outer_loop,
-                                                                                                       inner_loop,
-                                                                                                       total_loop,
-                                                                                                       label))
+                    share = self.queue_split()
+                    if share:
+                        MPI.Request.Wait(next_assign_requests[source]) # ensure we can safely access send buffer
+                        self.sendvals[source] = share
+                        if self.wt_verbose:
+                            label = " ***" if barrier else ""
+                            print("rank {:3d} satisfying {:3d}, loop (out,in,tot) = ({}, {}, {}){}".format(self.rank,
+                                                                                                           source,
+                                                                                                           outer_loop,
+                                                                                                           inner_loop,
+                                                                                                           total_loop,
+                                                                                                           label))
                         next_assign_requests[source] = self.comm.issend(self.sendvals[source],
                                                                         dest=source,
                                                                         tag=self.tags['work_reply'])
@@ -507,8 +515,8 @@ class WorkThief(MPIClass):
                 # Do I need more work?
                 if self.need_work():
                     stealrank = self.next_steal()
-                    if  ((stole_from[stealrank] < max_requests_per_peer) and
-                         MPI.Request.Test(next_steal_requests[stealrank])):
+                    if ((stole_from[stealrank] < max_requests_per_peer) and
+                        MPI.Request.Test(next_steal_requests[stealrank])):
                         stole_from[stealrank] += 1
                         n_msg_sent += 1
                         # label = " ***" if barrier else ""
@@ -534,9 +542,9 @@ class WorkThief(MPIClass):
                     else:
                         nbc_done = MPI.Request.Test(barrier)
 
-                if thread:
-                    thread.join()
-                    thread = None
+                # if thread:
+                #     thread.join()
+                #     thread = None
 
                 # end NBC loop
                 #-------------
@@ -564,6 +572,11 @@ class WorkThief(MPIClass):
 
         # done not all_done loop
         #-----------------------
+
+        # signal and wait for thread
+        if thread:
+            self.thread_done = True;
+            thread.join()
 
 
         # complete
@@ -596,9 +609,6 @@ class WorkThief(MPIClass):
         assert outer_loop is self.comm.allreduce(outer_loop, MPI.MAX), "Inconsistent outer_loop count??"
         assert outer_loop is self.comm.allreduce(outer_loop, MPI.MIN), "Inconsistent outer_loop count??"
         #print(self.file_size, self.st_modes)
-
-        if thread:
-            self.thread_done = True; thread.join()
 
         return
 
