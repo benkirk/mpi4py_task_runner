@@ -31,14 +31,15 @@ class WorkThief(MPIClass):
         self.wt_verbose = False
         self.run_threaded = True
         self.queue = queue.Queue()
-        self.dirs = []
+        self.do_stat = False
         self.files = []
         self.num_files = 0
+        self.dirs = []
         self.num_dirs = 0
         self.file_size = 0
         self.st_modes = defaultdict(int)
         self.excess_threshold =  1
-        self.starve_threshold =  0
+        self.starve_threshold = 10
 
         self.sendvals = [list() for p in range(0,self.nranks) ]
         self.assign_requests = [MPI.REQUEST_NULL for p in range(0,self.nranks) ]
@@ -163,7 +164,7 @@ class WorkThief(MPIClass):
             for di in os.scandir(top):
                 f        = di.name
                 pathname = di.path
-                statinfo = None #di.stat(follow_symlinks=False)
+                statinfo = di.stat(follow_symlinks=False) if self.do_stat else None
                 if statinfo: # increment st_mode counts
                     self.st_modes[statinfo.st_mode] += 1
                 if di.is_dir(follow_symlinks=False):
@@ -375,15 +376,15 @@ class WorkThief(MPIClass):
 
         # how many outstanding work requests to allow
         max_outstanding_requests = 1
-        max_requests_per_peer = 20
+        max_requests_per_peer = 5
 
         # double butffering for requests
         next_assign_requests = [ MPI.REQUEST_NULL for p in range(0,self.nranks) ]
         next_steal_requests  = [ MPI.REQUEST_NULL for p in range(0,self.nranks) ]
 
-        self.comm.Barrier()
         tstart = MPI.Wtime()
         status = MPI.Status()
+        thread = None
 
         #-------------------------
         # single rank optimization
@@ -402,7 +403,6 @@ class WorkThief(MPIClass):
         while not all_done:
 
 
-            thread = None
             if self.run_threaded:
                 thread = threading.Thread(target=self.progress_daemon)
                 thread.start()

@@ -13,6 +13,7 @@ class TarFiles(Base):
         self.otar = None
         Base.__init__(self)
         self.run_threaded = True
+        self.do_stat = True
         return
 
 
@@ -45,6 +46,7 @@ class TarFiles(Base):
             self.otar = tarfile.open("/ephemeral/benkirk/test_tar_output/output-{:05d}.tar".format(self.rank), "w")
 
         print("[{:3d}] {}".format(self.rank,filename))
+
         self.otar.add(filename, recursive=False)
         return
 
