@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-import os, sys
+import os
+import sys
 import tempfile
 import shutil
+import platform
 from collections import defaultdict
 
 
@@ -98,7 +100,8 @@ class MPIClass:
                 if self.i_am_root:
                     print(sep)
                 else:
-                    print("rank {}, found {} files, {} dirs".format(self.rank, self.num_files, self.num_dirs))
+                    print("rank {} / {}, found {} files, {} dirs".format(self.rank, platform.node(),
+                                                                         self.num_files, self.num_dirs))
                     #print(self.st_modes)
 
         nfiles_tot = self.comm.allreduce(self.num_files, MPI.SUM)

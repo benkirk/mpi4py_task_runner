@@ -21,7 +21,7 @@ class Slave(MPIClass):
 
         # # process options. open any files thay belong in shared run directory.
         # if "archive" in self.options:
-        #self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
+        self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
 
         return
 
@@ -54,7 +54,6 @@ class Slave(MPIClass):
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
                 else:
-                    self.files.append(pathname)
                     self.process_file(pathname, statinfo)
         except:
             print("cannot scan {}".format(dirname))
@@ -70,6 +69,7 @@ class Slave(MPIClass):
         #self.files.append(filename)
         self.num_files += 1
         if statinfo: self.file_size += statinfo.st_size
+
         if self.tar: self.tar.add(filename, recursive=False)
         return
 
