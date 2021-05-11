@@ -35,6 +35,9 @@ class Slave(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_directory(self, dirname, statinfo=None):
         self.num_dirs += 1
+
+        print("[{:3d}](d) {}".format(self.rank, dirname))
+
         #-------------------------------------
         # python scandir implementation follows
         self.dirs = []
@@ -96,8 +99,10 @@ class Slave(MPIClass):
         status = MPI.Status()
         while True:
 
-            self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
-            self.dirs = None
+
+            if self.dirs:
+                self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
+                self.dirs = None
 
 
             # signal Master we are ready for the next task. We can do this
@@ -107,18 +112,18 @@ class Slave(MPIClass):
 
             # receive instructions from Master
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
+
             if status.Get_tag() == self.tags['terminate']: break
 
-            print("[{:3d}](d) {}".format(self.rank, next_dir))
+            if next_dir:
+                assert next_dir
 
-            assert next_dir
+                tstart = MPI.Wtime()
+                self.process_directory(next_dir)
 
-            tstart = MPI.Wtime()
-            if next_dir: self.process_directory(next_dir)
-
-            #self.run_serial_task()
-            #print("[{:3d}] {}".format(self.rank, next_dir))
-            # self.result = "  rank {} completed {} in {} sec.".format(self.rank,
-            #                                                          next_dir,
-            #                                                          round(MPI.Wtime() - tstart,5))
+                #self.run_serial_task()
+                #print("[{:3d}] {}".format(self.rank, next_dir))
+                # self.result = "  rank {} completed {} in {} sec.".format(self.rank,
+                #                                                          next_dir,
+                #                                                          round(MPI.Wtime() - tstart,5))
         return

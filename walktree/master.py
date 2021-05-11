@@ -19,7 +19,8 @@ class Master(MPIClass):
         self.num_dirs = 0
         self.file_size = 0
         self.niter = 10*self.comm.Get_size()
-        self.any_dirs = [True for p in range(0,self.nranks)]
+        self.any_dirs = [False for p in range(0,self.nranks)]
+        self.any_dirs[0] = True
         return
 
 
@@ -27,6 +28,7 @@ class Master(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def finished(self):
         self.iteration +=1
+
         if any(self.any_dirs): return False
 
         return True
@@ -35,37 +37,45 @@ class Master(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
+
         status = MPI.Status()
-        instruct = None
 
         # execution loop, until we determine we are finished.
         while not self.finished():
 
-            # check for incoming directories
-            more_dirs = self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['dir_reply'], status=status)
-            ready_rank = status.Get_source()
-            if more_dirs: self.dirs.extend(more_dirs)
-            self.any_dirs[ready_rank] = True if more_dirs else False
-            #print(" *** master received a dir_reply from [{:3d}] ***".format(ready_rank))
-
-
-            # dispatch directories to any 'ready' ranks
-            if self.dirs:
-
-                self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status)
-                ready_rank = status.Get_source()
-
-                # send instructions to the ready rank. For this simple example
-                # this is just a string, but could be any pickleable data type
-                next_dir  = self.dirs.pop()
-
-                #print("Running dir {} on rank {}".format(next_dir, ready_rank))
-                self.comm.ssend(next_dir, dest=ready_rank, tag=self.tags['execute'])
-                self.any_dirs[ready_rank] = True
+            #time.sleep(0.1)
 
             self.any_dirs[0] = True if self.dirs else False
 
-            #time.sleep(1)
+            #print(self.any_dirs)
+
+            # check for incoming directories
+            if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['dir_reply'], status=status):
+                ready_rank = status.Get_source()
+                self.any_dirs[0]          = True
+                self.any_dirs[ready_rank] = False
+                more_dirs  = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply'])
+                assert more_dirs
+                self.dirs.extend(more_dirs)
+                #print(" *** master received a dir_reply from [{:3d}] {} ***".format(ready_rank, more_dirs))
+
+
+            # check for incoming ready status
+            if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status):
+                ready_rank = status.Get_source()
+                #print(ready_rank)
+                self.any_dirs[ready_rank] = False
+
+                self.comm.recv(source=ready_rank, tag=self.tags['ready'])
+
+                next_dir = None
+                self.any_dirs[ready_rank] = False
+                if self.dirs:
+                    next_dir  = self.dirs.pop()
+                    self.any_dirs[ready_rank] = True
+                    #print("Running dir {} on rank {}".format(next_dir, ready_rank))
+                self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute'])
+
 
 
         # cleanup loop, send 'terminate' tag to each slave rank in
