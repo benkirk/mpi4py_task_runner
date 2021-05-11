@@ -1,1 +1,0 @@
-../write_rand_data.py

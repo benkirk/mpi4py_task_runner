@@ -32,7 +32,6 @@ class MPIClass:
         self.options = self.comm.bcast(options)
 
         self.dirs = None
-        self.files = None
         self.num_files = 0
         self.num_dirs = 0
         self.file_size = 0
