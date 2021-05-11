@@ -3,6 +3,11 @@ default: run
 clean:
 	rm -f output-*.tar
 
+clobber:
+	$(MAKE) clean
+	rm -f *~ *.pyc
+	rm -rf __pycache__
+
 run:
 	mpirun-mpich-mp -n 25 ./run.py
 
