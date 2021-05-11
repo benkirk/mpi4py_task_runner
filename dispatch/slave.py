@@ -5,8 +5,6 @@ from mpiclass import MPIClass
 import tarfile
 import os
 import shutil
-import threading
-import queue
 
 
 ################################################################################
@@ -24,10 +22,6 @@ class Slave(MPIClass):
         # # process options. open any files thay belong in shared run directory.
         # if "archive" in self.options:
         self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
-        self.queue = queue.Queue(maxsize=5000)
-
-        self.t = threading.Thread(target=self.process_queue, daemon=True)
-        self.t.start()
 
         return
 
@@ -37,7 +31,7 @@ class Slave(MPIClass):
     def process_directory(self, dirname, statinfo=None):
         self.num_dirs += 1
 
-        #print("[{:3d}](d) {}".format(self.rank, dirname))
+        print("[{:3d}](d) {}".format(self.rank, dirname))
 
         #-------------------------------------
         # python scandir implementation follows
@@ -63,8 +57,7 @@ class Slave(MPIClass):
             print("cannot scan {}".format(dirname))
 
         # add the directory object itself, to get any special permissions or ACLs
-        #if self.tar: self.tar.add(dirname, recursive=False)
-        self.queue.put(dirname)
+        if self.tar: self.tar.add(dirname, recursive=False)
 
         return
 
@@ -72,31 +65,13 @@ class Slave(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_file(self, filename, statinfo=None):
-        #print("[{:3d}](f) {}".format(self.rank, filename))
+        print("[{:3d}](f) {}".format(self.rank, filename))
 
         self.num_files += 1
         if statinfo: self.file_size += statinfo.st_size
 
-        #if self.tar: self.tar.add(filename, recursive=False)
-        self.queue.put(filename)
-        return
+        if self.tar: self.tar.add(filename, recursive=False)
 
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def process_queue(self):
-
-        while True:
-            item = self.queue.get()
-            if item:
-                print("[{:3d}] {}".format(self.rank, item))
-                if self.tar: self.tar.add(item, recursive=False)
-            self.queue.task_done()
-
-            if item is None:
-                print("[{:3d}] *** terminating thread ***".format(self.rank))
-                assert self.queue.empty()
-                break
         return
 
 
@@ -111,8 +86,6 @@ class Slave(MPIClass):
             # with the subsequent recv.
             self.comm.ssend(None, dest=0, tag=self.tags['ready'])
 
-            #print("[{:3d}] queue size = {}".format(self.rank, self.queue.qsize()))
-
             # receive instructions from Master
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
 
@@ -124,7 +97,4 @@ class Slave(MPIClass):
                 tstart = MPI.Wtime()
                 self.process_directory(next_dir)
 
-        # Done with MPI bits, tell our thread
-        self.queue.put(None)
-        self.t.join()
         return
