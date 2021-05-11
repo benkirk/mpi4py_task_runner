@@ -24,7 +24,7 @@ class Slave(MPIClass):
         # # process options. open any files thay belong in shared run directory.
         # if "archive" in self.options:
         self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
-        self.queue = queue.Queue()
+        self.queue = queue.Queue(maxsize=5000)
 
         self.t = threading.Thread(target=self.process_queue, daemon=True)
         self.t.start()
@@ -91,6 +91,7 @@ class Slave(MPIClass):
 
             if item is None:
                 print("[{:3d}] *** terminating thread ***".format(self.rank))
+                assert self.queue.empty()
                 break
         return
 
@@ -131,6 +132,8 @@ class Slave(MPIClass):
             # with the subsequent recv.
             self.comm.ssend(None, dest=0, tag=self.tags['ready'])
 
+            #print("[{:3d}] queue size = {}".format(self.rank, self.queue.qsize()))
+
             # receive instructions from Master
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
 
@@ -147,6 +150,8 @@ class Slave(MPIClass):
                 # self.result = "  rank {} completed {} in {} sec.".format(self.rank,
                 #                                                          next_dir,
                 #                                                          round(MPI.Wtime() - tstart,5))
+
+        # Done with MPI bits, tell our thread
         self.queue.put(None)
         self.t.join()
         return
