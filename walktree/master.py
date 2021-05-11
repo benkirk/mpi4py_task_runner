@@ -65,11 +65,8 @@ class Master(MPIClass):
                 ready_rank = status.Get_source()
                 #print(ready_rank)
                 self.any_dirs[ready_rank] = False
-
                 self.comm.recv(source=ready_rank, tag=self.tags['ready'])
-
                 next_dir = None
-                self.any_dirs[ready_rank] = False
                 if self.dirs:
                     next_dir  = self.dirs.pop()
                     self.any_dirs[ready_rank] = True

@@ -6,6 +6,7 @@ clean:
 clobber:
 	$(MAKE) clean
 	rm -f *~ *.pyc
+	rm -rf __pycache__
 
 run:
 	mpirun-mpich-mp -n 25 ./run.py

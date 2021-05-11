@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-import os
+import os, sys
 import tempfile
 import shutil
+from collections import defaultdict
 
 
 
@@ -27,6 +28,14 @@ class MPIClass:
         self.nranks = self.comm.Get_size()
         self.i_am_root = False if self.rank else True
         self.options = self.comm.bcast(options)
+
+        self.dirs = None
+        self.files = None
+        self.num_files = 0
+        self.num_dirs = 0
+        self.file_size = 0
+        self.st_modes = defaultdict(int)
+
         return
 
 
@@ -34,6 +43,7 @@ class MPIClass:
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __del__(self):
         self.cleanup()
+        self.summary()
         return
 
 
@@ -68,4 +78,39 @@ class MPIClass:
         #     os.chdir(self.rundir)
         #     shutil.rmtree(self.local_rankdir,ignore_errors=True)
         #     self.local_rankdir = None
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def summary(self):
+
+        self.comm.Barrier()
+        sys.stdout.flush()
+
+        sep="-"*80
+
+        # print end message
+        for p in range(0,self.nranks):
+            self.comm.Barrier()
+            sys.stdout.flush()
+            if p == self.rank:
+                if self.i_am_root:
+                    print(sep)
+                else:
+                    print("rank {}, found {} files, {} dirs".format(self.rank, self.num_files, self.num_dirs))
+                    #print(self.st_modes)
+
+        nfiles_tot = self.comm.allreduce(self.num_files, MPI.SUM)
+        ndirs_tot  = self.comm.allreduce(self.num_dirs,  MPI.SUM)
+        fsize_tot  = self.comm.allreduce(self.file_size, MPI.SUM)
+
+        self.comm.Barrier()
+        sys.stdout.flush()
+        if self.i_am_root:
+            print("{}\nTotal found {} / {} files / {} dirs".format(sep,
+                                                                   nfiles_tot+ndirs_tot,
+                                                                   nfiles_tot,
+                                                                   ndirs_tot))
+            print("Total File Size = {:.5e} bytes".format(fsize_tot))
         return

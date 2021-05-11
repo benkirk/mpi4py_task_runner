@@ -14,19 +14,14 @@ class Slave(MPIClass):
     def __init__(self):
         MPIClass.__init__(self)
 
-        self.instruct = None;
-        self.dirs = None
-        self.files = None
-        self.num_files = 0
-        self.num_dirs = 0
-        self.file_size = 0
         self.tar = None;
         # on first call, have master print our local config. we can do this by sending
         # a note as our first 'result'
         self.result = None #" Rank {} using local directory {}".format(self.rank, self.local_rankdir)
 
         # # process options. open any files thay belong in shared run directory.
-        # if "archive" in self.options: self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
+        # if "archive" in self.options:
+        #self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
 
         return
 
@@ -37,6 +32,8 @@ class Slave(MPIClass):
         self.num_dirs += 1
 
         print("[{:3d}](d) {}".format(self.rank, dirname))
+
+        if self.tar: self.tar.add(dirname, recursive=False)
 
         #-------------------------------------
         # python scandir implementation follows
@@ -49,14 +46,15 @@ class Slave(MPIClass):
                 pathname = di.path
 
 
-                statinfo = None #di.stat(follow_symlinks=False)
+                #statinfo = None
+                statinfo = di.stat(follow_symlinks=False)
                 if statinfo:
                     self.st_modes[statinfo.st_mode] += 1
+
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
                 else:
                     self.files.append(pathname)
-                    print("[{:3d}](f) {}".format(self.rank, pathname))
                     self.process_file(pathname, statinfo)
         except:
             print("cannot scan {}".format(dirname))
@@ -67,10 +65,12 @@ class Slave(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_file(self, filename, statinfo=None):
+        print("[{:3d}](f) {}".format(self.rank, filename))
+
         #self.files.append(filename)
         self.num_files += 1
-        if statinfo:
-            self.file_size += statinfo.st_size
+        if statinfo: self.file_size += statinfo.st_size
+        if self.tar: self.tar.add(filename, recursive=False)
         return
 
 
