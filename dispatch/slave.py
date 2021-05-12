@@ -6,6 +6,9 @@ import tarfile
 import os
 import shutil
 
+#                b       k      M      G      T
+MAXSIZE_BYTES=   2  * 1024 * 1024 * 1024 * 1024;
+
 
 ################################################################################
 class Slave(MPIClass):
@@ -14,21 +17,38 @@ class Slave(MPIClass):
     def __init__(self):
         MPIClass.__init__(self)
 
+
         self.tar = None;
+        self.tar_cnt  = 0
+        self.tar_size = 0
         # on first call, have master print our local config. we can do this by sending
         # a note as our first 'result'
         self.result = None #" Rank {} using local directory {}".format(self.rank, self.local_rankdir)
 
         # # process options. open any files thay belong in shared run directory.
         # if "archive" in self.options:
-        self.tar = tarfile.open("output-{:05d}.tar".format(self.rank), "w")
 
         return
 
 
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def check_next_tarfile(self):
+
+        if (self.tar_size > MAXSIZE_BYTES):
+            self.tar.close()
+            self.tar_cnt += 1
+            self.tar = None
+
+        if self.tar is None:
+            self.tar = tarfile.open("output-r{:03d}-f{}.tar".format(self.rank, self.tar_cnt),
+                                    "w",
+                                    format=tarfile.PAX_FORMAT)
+            self.tar_size = 0
+
+        return
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def process_directory(self, dirname, statinfo=None):
+    def process_directory(self, dirname):
         self.num_dirs += 1
 
         print("[{:3d}](d) {}".format(self.rank, dirname))
@@ -41,18 +61,18 @@ class Slave(MPIClass):
                 f        = di.name
                 pathname = di.path
 
-                #statinfo = None
                 statinfo = di.stat(follow_symlinks=False)
-                if statinfo:
-                    self.st_modes[statinfo.st_mode] += 1
+                self.st_modes[statinfo.st_mode] += 1
+
+                # cycle next tarfile if necessary
+                self.check_next_tarfile()
 
                 # skip subdirectores
                 # (master will find those)
-                if di.is_dir(follow_symlinks=False):
-                    continue
+                if di.is_dir(follow_symlinks=False): continue
+
                 # process non-directories
-                else:
-                    self.process_file(pathname, statinfo)
+                self.process_file(pathname, statinfo)
         except:
             print("cannot scan {}".format(dirname))
 
@@ -64,11 +84,13 @@ class Slave(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def process_file(self, filename, statinfo=None):
+    def process_file(self, filename, statinfo):
         print("[{:3d}](f) {}".format(self.rank, filename))
 
         self.num_files += 1
-        if statinfo: self.file_size += statinfo.st_size
+
+        self.file_size += statinfo.st_size
+        self.tar_size  += statinfo.st_size
 
         if self.tar: self.tar.add(filename, recursive=False)
 
