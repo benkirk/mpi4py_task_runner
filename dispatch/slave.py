@@ -44,7 +44,6 @@ class Slave(MPIClass):
                                     "w",
                                     format=tarfile.PAX_FORMAT)
             self.tar_size = 0
-
         return
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

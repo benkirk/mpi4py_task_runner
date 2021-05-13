@@ -3,7 +3,7 @@
 from mpi4py import MPI
 from mpiclass import MPIClass
 import tarfile
-import os
+import os, sys, stat
 import shutil
 import threading
 import queue
@@ -34,24 +34,21 @@ class Slave(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def process_directory(self, dirname, statinfo=None):
+    def process_directory(self, dirname):
         self.num_dirs += 1
 
         #print("[{:3d}](d) {}".format(self.rank, dirname))
+        self.st_modes['dir'] += 1
 
         #-------------------------------------
         # python scandir implementation follows
         self.dirs = []
-        #print(" scanning {}".format(dirname))
         try:
             for di in os.scandir(dirname):
                 f        = di.name
                 pathname = di.path
 
-                #statinfo = None
                 statinfo = di.stat(follow_symlinks=False)
-                if statinfo:
-                    self.st_modes[statinfo.st_mode] += 1
 
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
@@ -61,7 +58,6 @@ class Slave(MPIClass):
             print("cannot scan {}".format(dirname))
 
         # add the directory object itself, to get any special permissions or ACLs
-        #if self.tar: self.tar.add(dirname, recursive=False)
         self.queue.put(dirname)
 
         return
@@ -69,15 +65,27 @@ class Slave(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def process_file(self, filename, statinfo=None):
+    def process_file(self, filename, statinfo):
         #print("[{:3d}](f) {}".format(self.rank, filename))
 
         self.num_files += 1
-        if statinfo: self.file_size += statinfo.st_size
+        self.file_size += statinfo.st_size
 
-        #if self.tar: self.tar.add(filename, recursive=False)
+        # decode file type
+        fmode = statinfo.st_mode
+        ftype = 'f'
+        if   stat.S_ISREG(fmode):  ftype = 'r'; self.st_modes['reg']   += 1
+        elif stat.S_ISLNK(fmode):  ftype = 'l'; self.st_modes['link']  += 1
+        elif stat.S_ISBLK(fmode):  ftype = 'b'; self.st_modes['block'] += 1
+        elif stat.S_ISCHR(fmode):  ftype = 'c'; self.st_modes['char']  += 1
+        elif stat.S_ISFIFO(fmode): ftype = 'f'; self.st_modes['fifo']  += 1
+        elif stat.S_ISSOCK(fmode): ftype = 's'; self.st_modes['sock']  += 1
+        elif stat.S_ISDIR(fmode):  assert False # huh??
+
         self.queue.put(filename)
         return
+
+
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_queue(self):

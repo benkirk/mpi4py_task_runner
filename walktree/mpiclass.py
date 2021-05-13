@@ -108,7 +108,6 @@ class MPIClass:
                 else:
                     print("rank {} / {}, found {} files, {} dirs".format(self.rank, platform.node(),
                                                                          self.num_files, self.num_dirs))
-                    print(p, self.st_modes)
                     for k,v in self.st_modes.items():
                         print("   {:5s} : {}".format(k,v))
                     print("   {:.5e} bytes".format(self.file_size))
