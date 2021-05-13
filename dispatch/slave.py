@@ -3,7 +3,7 @@
 from mpi4py import MPI
 from mpiclass import MPIClass
 import tarfile
-import os
+import os, sys, stat
 import shutil
 
 #                b       k      M      G      T
@@ -49,20 +49,20 @@ class Slave(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_directory(self, dirname):
+
         self.num_dirs += 1
+        self.st_modes['dir'] += 1
 
         print("[{:3d}](d) {}".format(self.rank, dirname))
 
         #-------------------------------------
         # python scandir implementation follows
-        #print(" scanning {}".format(dirname))
         try:
             for di in os.scandir(dirname):
                 f        = di.name
                 pathname = di.path
 
                 statinfo = di.stat(follow_symlinks=False)
-                self.st_modes[statinfo.st_mode] += 1
 
                 # cycle next tarfile if necessary
                 self.check_next_tarfile()
@@ -85,12 +85,24 @@ class Slave(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_file(self, filename, statinfo):
-        print("[{:3d}](f) {}".format(self.rank, filename))
 
         self.num_files += 1
 
         self.file_size += statinfo.st_size
         self.tar_size  += statinfo.st_size
+
+        # decode file type
+        fmode = statinfo.st_mode
+        ftype = 'f'
+        if   stat.S_ISREG(fmode):  ftype = 'r'; self.st_modes['reg']   += 1
+        elif stat.S_ISLNK(fmode):  ftype = 'l'; self.st_modes['link']  += 1
+        elif stat.S_ISBLK(fmode):  ftype = 'b'; self.st_modes['block'] += 1
+        elif stat.S_ISCHR(fmode):  ftype = 'c'; self.st_modes['char']  += 1
+        elif stat.S_ISFIFO(fmode): ftype = 'f'; self.st_modes['fifo']  += 1
+        elif stat.S_ISSOCK(fmode): ftype = 's'; self.st_modes['sock']  += 1
+        elif stat.S_ISDIR(fmode):  assert False # huh??
+
+        print("[{:3d}]({}) {}".format(self.rank, ftype, filename))
 
         if self.tar: self.tar.add(filename, recursive=False)
 

@@ -87,12 +87,19 @@ class MPIClass:
     def summary(self):
 
         self.comm.Barrier()
+        stat_keys = set(self.st_modes.keys())
+
         sys.stdout.flush()
 
         sep="-"*80
 
         # print end message
         for p in range(0,self.nranks):
+
+            # get stat keys from rank.
+            # Somehow broadcasting a set object seems to fail, so use a list
+            stat_keys.update( set(self.comm.bcast(list(self.st_modes.keys()), root=p)) )
+
             self.comm.Barrier()
             sys.stdout.flush()
             if p == self.rank:
@@ -101,7 +108,27 @@ class MPIClass:
                 else:
                     print("rank {} / {}, found {} files, {} dirs".format(self.rank, platform.node(),
                                                                          self.num_files, self.num_dirs))
-                    #print(self.st_modes)
+                    print(p, self.st_modes)
+                    for k,v in self.st_modes.items():
+                        print("   {:5s} : {}".format(k,v))
+                    print("   {:.5e} bytes".format(self.file_size))
+
+
+        self.comm.Barrier()
+        sys.stdout.flush()
+
+        if self.i_am_root:
+            print(sep)
+            print("Totals of All Ranks:")
+
+        # important to go through common keys in sorted order so we are adding the
+        # same values
+        stat_keys=list(stat_keys)
+        stat_keys.sort()
+        for k in stat_keys:
+            summed_val = self.comm.allreduce(self.st_modes[k], MPI.SUM)
+            if self.i_am_root:
+                print("   {:5s} : {}".format(k, summed_val))
 
         nfiles_tot = self.comm.allreduce(self.num_files, MPI.SUM)
         ndirs_tot  = self.comm.allreduce(self.num_dirs,  MPI.SUM)
@@ -110,9 +137,9 @@ class MPIClass:
         self.comm.Barrier()
         sys.stdout.flush()
         if self.i_am_root:
-            print("{}\nTotal found {} / {} files / {} dirs".format(sep,
-                                                                   nfiles_tot+ndirs_tot,
-                                                                   nfiles_tot,
-                                                                   ndirs_tot))
+            print("{}\nTotal found {} objects = {} files + {} dirs".format(sep,
+                                                                           nfiles_tot+ndirs_tot,
+                                                                           nfiles_tot,
+                                                                           ndirs_tot))
             print("Total File Size = {:.5e} bytes".format(fsize_tot))
         return
