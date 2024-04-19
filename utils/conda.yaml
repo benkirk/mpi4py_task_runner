@@ -1,0 +1,18 @@
+# create a minimal 'mkdocs' conda env, with a pinned python version
+# and all pip dependencies taken from 'requirements.txt'
+
+#name: usage_analysis
+channels:
+  - conda-forge
+  - base
+dependencies:
+  - humanfriendly
+  - make
+  - numpy
+  - pandas
+  - pyarrow
+  - python=3.10
+  - yaml
+  - pip
+  - pip:
+    - mpi4py
