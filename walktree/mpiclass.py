@@ -87,7 +87,7 @@ class MPIClass:
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def summary(self):
+    def summary(self, verbose=False):
 
         self.comm.Barrier()
         stat_keys = set(self.st_modes.keys())
@@ -103,17 +103,18 @@ class MPIClass:
             # Somehow broadcasting a set object seems to fail, so use a list
             stat_keys.update( set(self.comm.bcast(list(self.st_modes.keys()), root=p)) )
 
-            self.comm.Barrier()
-            sys.stdout.flush()
-            if p == self.rank:
-                if self.i_am_root:
-                    print(sep)
-                else:
-                    print("rank {} / {}, found {} files, {} dirs".format(self.rank, platform.node(),
-                                                                         self.num_files, self.num_dirs))
-                    for k,v in self.st_modes.items():
-                        print("   {:5s} : {}".format(k,v))
-                    print("   {:.5e} bytes".format(self.file_size))
+            if verbose:
+                self.comm.Barrier()
+                sys.stdout.flush()
+                if p == self.rank:
+                    if self.i_am_root:
+                        print(sep)
+                    else:
+                        print("rank {} / {}, found {} files, {} dirs".format(self.rank, platform.node(),
+                                                                             self.num_files, self.num_dirs))
+                        for k,v in self.st_modes.items():
+                            print("   {:5s} : {}".format(k,v))
+                        print("   {:.5e} bytes".format(self.file_size))
 
 
         self.comm.Barrier()
@@ -121,7 +122,7 @@ class MPIClass:
 
         if self.i_am_root:
             print(sep)
-            print("Totals of All Ranks:")
+            print("Totals from all ranks:")
 
         # important to go through common keys in sorted order so we are adding the
         # same values
