@@ -14,11 +14,6 @@ class Worker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
-
-        # on first call, have master print our local config. we can do this by sending
-        # a note as our first 'result'
-        self.result = None
-
         return
 
 
@@ -28,6 +23,10 @@ class Worker(MPIClass):
 
         self.num_dirs += 1
         self.st_modes['dir'] += 1
+
+        thisdir_nitems = thisdir_nbytes = 0
+
+        dirdepth = dirname.count(os.path.sep)
 
         #print("[{:3d}](d) {}".format(self.rank, dirname))
 
@@ -41,14 +40,15 @@ class Worker(MPIClass):
 
                 statinfo = di.stat(follow_symlinks=False)
 
+                thisdir_nitems += 1
+                thisdir_nbytes += statinfo.st_size
+
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
                 else:
                     self.process_file(pathname, statinfo)
         except:
             print("cannot scan {}".format(dirname))
-
-        # add the directory object itself, to get any special permissions or ACLs
 
         return
 
@@ -63,13 +63,12 @@ class Worker(MPIClass):
 
         # decode file type
         fmode = statinfo.st_mode
-        ftype = 'f'
-        if   stat.S_ISREG(fmode):  ftype = 'r'; self.st_modes['reg']   += 1
-        elif stat.S_ISLNK(fmode):  ftype = 'l'; self.st_modes['link']  += 1
-        elif stat.S_ISBLK(fmode):  ftype = 'b'; self.st_modes['block'] += 1
-        elif stat.S_ISCHR(fmode):  ftype = 'c'; self.st_modes['char']  += 1
-        elif stat.S_ISFIFO(fmode): ftype = 'f'; self.st_modes['fifo']  += 1
-        elif stat.S_ISSOCK(fmode): ftype = 's'; self.st_modes['sock']  += 1
+        if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
+        elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
+        elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
+        elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
+        elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
+        elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
         elif stat.S_ISDIR(fmode):  assert False # huh??
 
         return
