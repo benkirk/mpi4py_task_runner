@@ -4,7 +4,7 @@ from mpi4py import MPI
 from mpiclass import MPIClass
 import os
 import time
-
+from datetime import datetime
 
 
 ################################################################################
@@ -50,7 +50,10 @@ class Manager(MPIClass):
         self.progress_counts[0] = 0
         total = sum(self.progress_counts)
         self.progress_counts[0] = total
-        print('{:,} items; {:,} items/sec'.format(total, int(float(total)/elapsed)))
+        print('[{}] Walked {:,} items in {:.1f} seconds ({:,} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
+                                                                                 total,
+                                                                                 elapsed,
+                                                                                 int(float(total)/elapsed)))
         return
 
 
