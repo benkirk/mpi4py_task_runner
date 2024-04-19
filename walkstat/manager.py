@@ -4,6 +4,7 @@ from mpi4py import MPI
 from mpiclass import MPIClass
 import os
 import time
+import sys
 from datetime import datetime
 
 
@@ -54,6 +55,7 @@ class Manager(MPIClass):
                                                                                  total,
                                                                                  elapsed,
                                                                                  int(float(total)/elapsed)))
+        sys.stdout.flush()
         return
 
 
