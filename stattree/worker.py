@@ -2,7 +2,6 @@
 
 from mpi4py import MPI
 from mpiclass import MPIClass
-import tarfile
 import os, sys, stat
 import shutil
 
@@ -11,17 +10,13 @@ MAXSIZE_BYTES=   2  * 1024 * 1024 * 1024 * 1024;
 
 
 ################################################################################
-class Slave(MPIClass):
+class Worker(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
 
-
-        self.tar = None;
-        self.tar_cnt  = 0
-        self.tar_size = 0
-        # on first call, have master print our local config. we can do this by sending
+        # on first call, have manager print our local config. we can do this by sending
         # a note as our first 'result'
         self.result = None #" Rank {} using local directory {}".format(self.rank, self.local_rankdir)
 
@@ -30,21 +25,6 @@ class Slave(MPIClass):
 
         return
 
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def check_next_tarfile(self):
-
-        if (self.tar_size > MAXSIZE_BYTES):
-            self.tar.close()
-            self.tar_cnt += 1
-            self.tar = None
-
-        if self.tar is None:
-            self.tar = tarfile.open("output-r{:03d}-f{}.tar".format(self.rank, self.tar_cnt),
-                                    "w",
-                                    format=tarfile.PAX_FORMAT)
-            self.tar_size = 0
-        return
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_directory(self, dirname):
@@ -63,20 +43,14 @@ class Slave(MPIClass):
 
                 statinfo = di.stat(follow_symlinks=False)
 
-                # cycle next tarfile if necessary
-                self.check_next_tarfile()
-
                 # skip subdirectores
-                # (master will find those)
+                # (manager will find those)
                 if di.is_dir(follow_symlinks=False): continue
 
                 # process non-directories
                 self.process_file(pathname, statinfo)
         except:
             print("cannot scan {}".format(dirname))
-
-        # add the directory object itself, to get any special permissions or ACLs
-        if self.tar: self.tar.add(dirname, recursive=False)
 
         return
 
@@ -88,7 +62,6 @@ class Slave(MPIClass):
         self.num_files += 1
 
         self.file_size += statinfo.st_size
-        self.tar_size  += statinfo.st_size
 
         # decode file type
         fmode = statinfo.st_mode
@@ -101,9 +74,7 @@ class Slave(MPIClass):
         elif stat.S_ISSOCK(fmode): ftype = 's'; self.st_modes['sock']  += 1
         elif stat.S_ISDIR(fmode):  assert False # huh??
 
-        print("[{:3d}]({}) {}".format(self.rank, ftype, filename))
-
-        if self.tar: self.tar.add(filename, recursive=False)
+        #print("[{:3d}]({}) {}".format(self.rank, ftype, filename))
 
         return
 
@@ -114,12 +85,12 @@ class Slave(MPIClass):
         status = MPI.Status()
         while True:
 
-            # signal Master we are ready for the next task. We can do this
+            # signal Manager we are ready for the next task. We can do this
             # asynchronously, without a request, because we can infer completion
             # with the subsequent recv.
             self.comm.ssend(None, dest=0, tag=self.tags['ready'])
 
-            # receive instructions from Master
+            # receive instructions from Manager
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
 
             if status.Get_tag() == self.tags['terminate']: break

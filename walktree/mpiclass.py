@@ -20,6 +20,7 @@ class MPIClass:
             'work_deny'     : 22,
             'dir_request'   : 30,
             'dir_reply'     : 31,
+            'counts'        : 40,
             'terminate'     : 1000 }
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -36,6 +37,8 @@ class MPIClass:
         self.num_dirs = 0
         self.file_size = 0
         self.st_modes = defaultdict(int)
+        self.uid_count = defaultdict(int)
+        self.uid_size = defaultdict(int)
 
         return
 

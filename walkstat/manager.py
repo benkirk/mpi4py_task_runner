@@ -8,7 +8,7 @@ import time
 
 
 ################################################################################
-class Master(MPIClass):
+class Manager(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self,dirs=None,options=None):
@@ -21,6 +21,8 @@ class Master(MPIClass):
         self.niter = 10*self.comm.Get_size()
         self.any_dirs = [False for p in range(0,self.nranks)]
         self.any_dirs[0] = True
+        self.progress_counts = [0 for p in range(0,self.nranks)]
+        self.progress_time = self.start_time = MPI.Wtime()
         return
 
 
@@ -36,14 +38,30 @@ class Master(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def report_progress(self, forceprint=False):
+        curtime = MPI.Wtime()
+        deltaprog = (curtime - self.progress_time)
+
+        if not forceprint:
+            if deltaprog < 5.: return
+
+        self.progress_time = curtime
+        elapsed = (curtime - self.start_time)
+        self.progress_counts[0] = 0
+        total = sum(self.progress_counts)
+        self.progress_counts[0] = total
+        print('{:,} items; {:,} items/sec'.format(total, int(float(total)/elapsed)))
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
 
         status = MPI.Status()
 
         # execution loop, until we determine we are finished.
         while not self.finished():
-
-            #time.sleep(0.1)
 
             self.any_dirs[0] = True if self.dirs else False
 
@@ -56,8 +74,10 @@ class Master(MPIClass):
                 self.any_dirs[ready_rank] = False
                 more_dirs  = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply'])
                 assert more_dirs
+                self.progress_counts[ready_rank] = more_dirs.pop()
                 self.dirs.extend(more_dirs)
                 #print(" *** master received a dir_reply from [{:3d}] {} ***".format(ready_rank, more_dirs))
+                self.report_progress()
 
 
             # check for incoming ready status
@@ -88,5 +108,6 @@ class Master(MPIClass):
 
         # OK, messages sent, wait for all to complete
         MPI.Request.waitall(requests)
+        self.report_progress(forceprint=True)
 
         return

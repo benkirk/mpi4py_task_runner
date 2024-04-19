@@ -9,7 +9,7 @@ import subprocess
 
 
 ################################################################################
-class Master(MPIClass):
+class Manager(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self,dirs=None,options=None):
@@ -41,7 +41,7 @@ class Master(MPIClass):
         # execution loop
         while True:
             output = process.stdout.readline()
-            output = output.decode('ascii')
+            output = output.decode('utf-8')
             if output == '' and process.poll() is not None: break
             if output:
                 output=output.rstrip('\n')
@@ -55,7 +55,7 @@ class Master(MPIClass):
         rc = process.poll()
 
 
-        # cleanup loop, send 'terminate' tag to each slave rank in
+        # cleanup loop, send 'terminate' tag to each worker rank in
         # whatever order they become ready.
         # Don't forget to catch their final 'result'
         print("  --> Finished dispatch, Terminating ranks")
