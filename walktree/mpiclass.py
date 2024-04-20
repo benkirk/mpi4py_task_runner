@@ -56,8 +56,10 @@ class MPIClass:
         self.num_dirs = 0
         self.file_size = 0
         self.st_modes = defaultdict(int)
-        self.uid_count = defaultdict(int)
-        self.uid_size = defaultdict(int)
+        self.uid_nitems = defaultdict(int)
+        self.uid_nbytes = defaultdict(int)
+        self.gid_nitems = defaultdict(int)
+        self.gid_nbytes = defaultdict(int)
 
         self.top_nitems_dirs = MaxHeap(500)
         self.top_nbytes_dirs = MaxHeap(500)

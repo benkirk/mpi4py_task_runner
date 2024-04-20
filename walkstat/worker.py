@@ -25,16 +25,17 @@ class Worker(MPIClass):
         self.num_dirs += 1
         self.st_modes['dir'] += 1
 
-        thisdir_nitems = thisdir_nbytes = 0
-
-        dirdepth = dirname.count(os.path.sep)
-
         #print("[{:3d}](d) {}".format(self.rank, dirname))
 
         #-------------------------------------
         # python scandir implementation follows
         self.dirs = []
         try:
+            thisdir_nitems = 0
+            thisdir_nbytes = 0
+
+            dirdepth = dirname.count(os.path.sep)
+
             for di in os.scandir(dirname):
                 f        = di.name
                 pathname = di.path
@@ -44,17 +45,36 @@ class Worker(MPIClass):
                 thisdir_nitems += 1
                 thisdir_nbytes += statinfo.st_size
 
+                self.uid_nitems[statinfo.st_uid] += 1
+                self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
+                self.gid_nitems[statinfo.st_gid] += 1
+                self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
 
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
-                else:
-                    self.process_file(pathname, statinfo)
-        except:
-            print("cannot scan {}".format(dirname))
 
-        # track the size & count of this directory in our top heaps
-        self.top_nitems_dirs.add((thisdir_nitems, dirname))
-        self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
+                else:
+                    self.num_files += 1
+                    self.file_size += statinfo.st_size
+
+                    # decode file type
+                    fmode = statinfo.st_mode
+                    if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
+                    elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
+                    elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
+                    elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
+                    elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
+                    elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
+                    elif stat.S_ISDIR(fmode):  assert False # huh??
+                    #self.process_file(pathname, statinfo)
+
+            # track the size & count of this directory in our top heaps
+            self.top_nitems_dirs.add((thisdir_nitems, dirname))
+            self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
+
+        except:
+            print('cannot scan {}'.format(dirname))
+
 
         return
 
@@ -62,22 +82,24 @@ class Worker(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_file(self, filename, statinfo):
-        #print("[{:3d}](f) {}".format(self.rank, filename))
-
-        self.num_files += 1
-        self.file_size += statinfo.st_size
-
-        # decode file type
-        fmode = statinfo.st_mode
-        if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
-        elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
-        elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
-        elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
-        elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
-        elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
-        elif stat.S_ISDIR(fmode):  assert False # huh??
-
-        return
+        assert(False)
+        #return
+        ##print("[{:3d}](f) {}".format(self.rank, filename))
+        #
+        #self.num_files += 1
+        #self.file_size += statinfo.st_size
+        #
+        ## decode file type
+        #fmode = statinfo.st_mode
+        #if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
+        #elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
+        #elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
+        #elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
+        #elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
+        #elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
+        #elif stat.S_ISDIR(fmode):  assert False # huh??
+        #
+        #return
 
 
 
