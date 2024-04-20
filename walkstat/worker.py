@@ -6,6 +6,8 @@ import os, sys, stat
 import shutil
 #import threading
 #import queue
+from maxheap import MaxHeap
+
 
 
 ################################################################################
@@ -14,6 +16,8 @@ class Worker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
+        self.top_nitems_dirs = MaxHeap(500)
+        self.top_nbytes_dirs = MaxHeap(500)
         return
 
 
@@ -43,12 +47,17 @@ class Worker(MPIClass):
                 thisdir_nitems += 1
                 thisdir_nbytes += statinfo.st_size
 
+
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
                 else:
                     self.process_file(pathname, statinfo)
         except:
             print("cannot scan {}".format(dirname))
+
+        # track the size & count of this directory in our top heaps
+        self.top_nitems_dirs.add((thisdir_nitems, dirname))
+        self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
 
         return
 

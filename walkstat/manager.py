@@ -6,6 +6,8 @@ import os
 import time
 import sys
 from datetime import datetime
+from maxheap import MaxHeap
+
 
 
 ################################################################################
@@ -105,7 +107,7 @@ class Manager(MPIClass):
         # Don't forget to catch their final 'result'
         print("  --> Finished dispatch, Terminating ranks")
         requests = []
-        for s in range(1,self.comm.Get_size()):
+        for s in range(1,self.nranks):
             self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status)
             # send terminate tag, but no need to wait
             requests.append(

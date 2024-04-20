@@ -7,8 +7,12 @@ import tempfile
 import shutil
 import platform
 from collections import defaultdict
-
-
+have_hf = False
+try:
+    import humanfriendly
+    have_hf = True
+except ImportError:
+    pass
 
 ################################################################################
 class MPIClass:
@@ -87,7 +91,7 @@ class MPIClass:
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def summary(self, verbose=False):
+    def summary(self, verbose=True):
 
         self.comm.Barrier()
         stat_keys = set(self.st_modes.keys())
@@ -97,7 +101,7 @@ class MPIClass:
         sep="-"*80
 
         # print end message
-        for p in range(0,self.nranks):
+        for p in range(1,self.nranks):
 
             # get stat keys from rank.
             # Somehow broadcasting a set object seems to fail, so use a list
@@ -110,12 +114,15 @@ class MPIClass:
                     if self.i_am_root:
                         print(sep)
                     else:
-                        print("rank {} / {}, found {} files, {} dirs".format(self.rank, platform.node(),
-                                                                             self.num_files, self.num_dirs))
+                        print("rank {} / {}, found {:,} files, {:,} dirs".format(self.rank, platform.node(),
+                                                                                 self.num_files, self.num_dirs))
                         for k,v in self.st_modes.items():
-                            print("   {:5s} : {}".format(k,v))
-                        print("   {:.5e} bytes".format(self.file_size))
+                            print("   {:5s} : {:,}".format(k,v))
 
+                        if have_hf:
+                            print("   {:5s} : {}".format('size',humanfriendly.format_size(self.file_size)))
+                        else:
+                            print("   {:5s} : {:.5e} bytes".format('size',self.file_size))
 
         self.comm.Barrier()
         sys.stdout.flush()
@@ -131,7 +138,7 @@ class MPIClass:
         for k in stat_keys:
             summed_val = self.comm.allreduce(self.st_modes[k], MPI.SUM)
             if self.i_am_root:
-                print("   {:5s} : {}".format(k, summed_val))
+                print("   {:5s} : {:,}".format(k, summed_val))
 
         nfiles_tot = self.comm.allreduce(self.num_files, MPI.SUM)
         ndirs_tot  = self.comm.allreduce(self.num_dirs,  MPI.SUM)
@@ -140,9 +147,13 @@ class MPIClass:
         self.comm.Barrier()
         sys.stdout.flush()
         if self.i_am_root:
-            print("{}\nTotal found {} objects = {} files + {} dirs".format(sep,
-                                                                           nfiles_tot+ndirs_tot,
-                                                                           nfiles_tot,
-                                                                           ndirs_tot))
-            print("Total File Size = {:.5e} bytes".format(fsize_tot))
+            print("{}\nTotal found: {:,} objects = {:,} files + {:,} dirs".format(sep,
+                                                                                 nfiles_tot+ndirs_tot,
+                                                                                 nfiles_tot,
+                                                                                 ndirs_tot))
+            if have_hf:
+                print("Total File Size: {}".format(humanfriendly.format_size(fsize_tot)))
+            else:
+                print("Total File Size: {:.5e} bytes".format(fsize_tot))
+
         return
