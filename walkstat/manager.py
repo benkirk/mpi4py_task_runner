@@ -56,11 +56,11 @@ class Manager(MPIClass):
         self.progress_sizes[0] = 0
         total_size = sum(self.progress_sizes)
         self.progress_sizes[0] = total_size
-        print('[{}] Walked {} items / {:>10} in {:.1f} seconds ({} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
-                                                                                      format_number(total_count),
-                                                                                      format_size(total_size),
-                                                                                      elapsed,
-                                                                                      format_number(int(float(total_count)/elapsed))))
+        print('[{}] Walked {} items / {} in {:.1f} seconds ({} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
+                                                                                  format_number(total_count),
+                                                                                  format_size(total_size),
+                                                                                  elapsed,
+                                                                                  format_number(int(float(total_count)/elapsed))))
         sys.stdout.flush()
         return
 
