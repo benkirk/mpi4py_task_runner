@@ -75,7 +75,6 @@ class Worker(MPIClass):
         except:
             print('cannot scan {}'.format(dirname))
 
-
         return
 
 

@@ -111,7 +111,7 @@ class MPIClass:
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def summary(self, verbose=True):
+    def summary(self, verbose=False):
 
         #self.comm.Barrier()
 
