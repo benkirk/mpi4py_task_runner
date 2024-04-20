@@ -90,6 +90,7 @@ class Worker(MPIClass):
                 # abuse self.dirs - append our current counts, this allows manager
                 # to summarize collective progress while only sending a single message
                 self.dirs.append(sum(self.st_modes.values()))
+                self.dirs.append(self.file_size)
                 self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
                 self.dirs = None
 

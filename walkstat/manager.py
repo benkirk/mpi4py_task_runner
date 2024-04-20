@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-from mpiclass import MPIClass
+from mpiclass import MPIClass, format_size, format_number
 import os
 import time
 import sys
@@ -23,6 +23,7 @@ class Manager(MPIClass):
         self.niter = 10*self.comm.Get_size()
         self.any_dirs = [False for p in range(0,self.nranks)]
         self.any_dirs[0] = True
+        self.progress_sizes = [0 for p in range(0,self.nranks)]
         self.progress_counts = [0 for p in range(0,self.nranks)]
         self.progress_time = self.start_time = MPI.Wtime()
         return
@@ -31,7 +32,7 @@ class Manager(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def finished(self):
-        self.iteration +=1
+        self.iteration += 1
 
         if any(self.any_dirs): return False
 
@@ -50,12 +51,16 @@ class Manager(MPIClass):
         self.progress_time = curtime
         elapsed = (curtime - self.start_time)
         self.progress_counts[0] = 0
-        total = sum(self.progress_counts)
-        self.progress_counts[0] = total
-        print('[{}] Walked {:,} items in {:.1f} seconds ({:,} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
-                                                                                 total,
-                                                                                 elapsed,
-                                                                                 int(float(total)/elapsed)))
+        total_count = sum(self.progress_counts)
+        self.progress_counts[0] = total_count
+        self.progress_sizes[0] = 0
+        total_size = sum(self.progress_sizes)
+        self.progress_sizes[0] = total_size
+        print('[{}] Walked {} items / {:>10} in {:.1f} seconds ({} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
+                                                                                      format_number(total_count),
+                                                                                      format_size(total_size),
+                                                                                      elapsed,
+                                                                                      format_number(int(float(total_count)/elapsed))))
         sys.stdout.flush()
         return
 
@@ -80,6 +85,7 @@ class Manager(MPIClass):
                 self.any_dirs[ready_rank] = False
                 more_dirs  = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply'])
                 assert more_dirs
+                self.progress_sizes[ready_rank] = more_dirs.pop()
                 self.progress_counts[ready_rank] = more_dirs.pop()
                 self.dirs.extend(more_dirs)
                 #print(" *** master received a dir_reply from [{:3d}] {} ***".format(ready_rank, more_dirs))
