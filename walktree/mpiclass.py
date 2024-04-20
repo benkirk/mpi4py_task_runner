@@ -8,18 +8,26 @@ import shutil
 import platform
 from collections import defaultdict
 from maxheap import MaxHeap
-have_hf = False
+have_humanfriendly = False
 try:
     import humanfriendly
-    have_hf = True
+    have_humanfriendly = True
 except ImportError:
     pass
 
 ################################################################################
 def flatten(matrix):
-    if matrix:
-        return [item for row in matrix for item in row]
+    if matrix: return [item for row in matrix for item in row]
     return None
+
+def format_size(val):
+    if have_humanfriendly: return humanfriendly.format_size(val)
+    return '{:.5e} bytes'.format(val)
+
+def format_number(val):
+    if have_humanfriendly: return humanfriendly.format_number(val)
+    return '{:,}'.format(val)
+
 
 ################################################################################
 class MPIClass:
@@ -133,11 +141,7 @@ class MPIClass:
                                                                                  self.num_files, self.num_dirs))
                         for k,v in self.st_modes.items():
                             print("   {:5s} : {:,}".format(k,v))
-
-                        if have_hf:
-                            print("   {:5s} : {}".format('size',humanfriendly.format_size(self.file_size)))
-                        else:
-                            print("   {:5s} : {:.5e} bytes".format('size',self.file_size))
+                        print("   {:5s} : {}".format('size',format_size(self.file_size)))
 
         self.comm.Barrier()
         sys.stdout.flush()
@@ -162,17 +166,14 @@ class MPIClass:
 
         if self.i_am_root:
             print("{}\nTotal found: {:,} objects = {:,} files + {:,} dirs".format(sep,
-                                                                                 nfiles_tot+ndirs_tot,
-                                                                                 nfiles_tot,
-                                                                                 ndirs_tot))
-            if not have_hf:
-                print("Total File Size: {:.5e} bytes".format(fsize_tot))
-            else:
-                print("Total File Size: {}".format(humanfriendly.format_size(fsize_tot)))
+                                                                                  nfiles_tot+ndirs_tot,
+                                                                                  nfiles_tot,
+                                                                                  ndirs_tot))
+            print("Total File Size: {}".format(format_size(fsize_tot)))
 
-                print(sep)
-                for item in self.top_nitems_dirs.top(50): print('{:>10} {}'.format(humanfriendly.format_number(item[0]), item[1]))
-                print(sep)
-                for item in self.top_nbytes_dirs.top(50): print('{:>10} {}'.format(humanfriendly.format_size(item[0]), item[1]))
+            print(sep)
+            for item in self.top_nitems_dirs.top(50): print('{:>10} {}'.format(format_number(item[0]), item[1]))
+            print(sep)
+            for item in self.top_nbytes_dirs.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
 
         return
