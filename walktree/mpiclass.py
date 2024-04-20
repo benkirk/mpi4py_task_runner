@@ -165,16 +165,14 @@ class MPIClass:
                                                                                  nfiles_tot+ndirs_tot,
                                                                                  nfiles_tot,
                                                                                  ndirs_tot))
-            if have_hf:
-                print("Total File Size: {}".format(humanfriendly.format_size(fsize_tot)))
-            else:
+            if not have_hf:
                 print("Total File Size: {:.5e} bytes".format(fsize_tot))
+            else:
+                print("Total File Size: {}".format(humanfriendly.format_size(fsize_tot)))
 
-            print(sep)
-            for item in self.top_nitems_dirs.top(25):
-                print(item)
-            print(sep)
-            for item in self.top_nbytes_dirs.top(25):
-                print(item)
+                print(sep)
+                for item in self.top_nitems_dirs.top(50): print('{:>10} {}'.format(humanfriendly.format_number(item[0]), item[1]))
+                print(sep)
+                for item in self.top_nbytes_dirs.top(50): print('{:>10} {}'.format(humanfriendly.format_size(item[0]), item[1]))
 
         return
