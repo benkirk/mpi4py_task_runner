@@ -7,12 +7,19 @@ import tempfile
 import shutil
 import platform
 from collections import defaultdict
+from maxheap import MaxHeap
 have_hf = False
 try:
     import humanfriendly
     have_hf = True
 except ImportError:
     pass
+
+################################################################################
+def flatten(matrix):
+    if matrix:
+        return [item for row in matrix for item in row]
+    return None
 
 ################################################################################
 class MPIClass:
@@ -43,6 +50,9 @@ class MPIClass:
         self.st_modes = defaultdict(int)
         self.uid_count = defaultdict(int)
         self.uid_size = defaultdict(int)
+
+        self.top_nitems_dirs = MaxHeap(500)
+        self.top_nbytes_dirs = MaxHeap(500)
 
         return
 
@@ -93,7 +103,12 @@ class MPIClass:
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def summary(self, verbose=True):
 
-        self.comm.Barrier()
+        #self.comm.Barrier()
+
+        # gather heaps
+        self.top_nitems_dirs.reset( flatten( self.comm.gather(self.top_nitems_dirs.get_list()) ) )
+        self.top_nbytes_dirs.reset( flatten( self.comm.gather(self.top_nbytes_dirs.get_list()) ) )
+
         stat_keys = set(self.st_modes.keys())
 
         sys.stdout.flush()
@@ -101,7 +116,7 @@ class MPIClass:
         sep="-"*80
 
         # print end message
-        for p in range(1,self.nranks):
+        for p in range(0,self.nranks):
 
             # get stat keys from rank.
             # Somehow broadcasting a set object seems to fail, so use a list
@@ -136,16 +151,15 @@ class MPIClass:
         stat_keys=list(stat_keys)
         stat_keys.sort()
         for k in stat_keys:
-            summed_val = self.comm.allreduce(self.st_modes[k], MPI.SUM)
+            summed_val = self.comm.reduce(self.st_modes[k], MPI.SUM)
             if self.i_am_root:
                 print("   {:5s} : {:,}".format(k, summed_val))
 
-        nfiles_tot = self.comm.allreduce(self.num_files, MPI.SUM)
-        ndirs_tot  = self.comm.allreduce(self.num_dirs,  MPI.SUM)
-        fsize_tot  = self.comm.allreduce(self.file_size, MPI.SUM)
-
-        self.comm.Barrier()
         sys.stdout.flush()
+        nfiles_tot = self.comm.reduce(self.num_files, MPI.SUM)
+        ndirs_tot  = self.comm.reduce(self.num_dirs,  MPI.SUM)
+        fsize_tot  = self.comm.reduce(self.file_size, MPI.SUM)
+
         if self.i_am_root:
             print("{}\nTotal found: {:,} objects = {:,} files + {:,} dirs".format(sep,
                                                                                  nfiles_tot+ndirs_tot,
@@ -155,5 +169,12 @@ class MPIClass:
                 print("Total File Size: {}".format(humanfriendly.format_size(fsize_tot)))
             else:
                 print("Total File Size: {:.5e} bytes".format(fsize_tot))
+
+            print(sep)
+            for item in self.top_nitems_dirs.top(25):
+                print(item)
+            print(sep)
+            for item in self.top_nbytes_dirs.top(25):
+                print(item)
 
         return

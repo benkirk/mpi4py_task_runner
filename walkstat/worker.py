@@ -6,7 +6,6 @@ import os, sys, stat
 import shutil
 #import threading
 #import queue
-from maxheap import MaxHeap
 
 
 
@@ -16,8 +15,6 @@ class Worker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
-        self.top_nitems_dirs = MaxHeap(500)
-        self.top_nbytes_dirs = MaxHeap(500)
         return
 
 
