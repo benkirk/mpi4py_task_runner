@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-from mpiclass import MPIClass, format_size, format_number
+from mpiclass import MPIClass, format_size, format_number, format_timespan
 import os
 import time
 import sys
@@ -56,11 +56,11 @@ class Manager(MPIClass):
         self.progress_sizes[0] = 0
         total_size = sum(self.progress_sizes)
         self.progress_sizes[0] = total_size
-        print('[{}] Walked {} items / {} in {:.1f} seconds ({} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
-                                                                                  format_number(total_count),
-                                                                                  format_size(total_size),
-                                                                                  elapsed,
-                                                                                  format_number(int(float(total_count)/elapsed))))
+        print('[{}] Walked {} items / {} in {} ({} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
+                                                                      format_number(total_count),
+                                                                      format_size(total_size),
+                                                                      format_timespan(elapsed),
+                                                                      format_number(int(float(total_count)/elapsed))))
         sys.stdout.flush()
         return
 
@@ -83,7 +83,7 @@ class Manager(MPIClass):
                 ready_rank = status.Get_source()
                 self.any_dirs[0]          = True
                 self.any_dirs[ready_rank] = False
-                more_dirs  = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply'])
+                more_dirs = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply'])
                 assert more_dirs
                 self.progress_sizes[ready_rank] = more_dirs.pop()
                 self.progress_counts[ready_rank] = more_dirs.pop()
@@ -91,21 +91,17 @@ class Manager(MPIClass):
                 #print(" *** master received a dir_reply from [{:3d}] {} ***".format(ready_rank, more_dirs))
                 self.report_progress()
 
-
             # check for incoming ready status
             if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status):
                 ready_rank = status.Get_source()
                 #print(ready_rank)
                 self.any_dirs[ready_rank] = False
-                self.comm.recv(source=ready_rank, tag=self.tags['ready'])
-                next_dir = None
                 if self.dirs:
+                    self.comm.recv(source=ready_rank, tag=self.tags['ready'])
                     next_dir  = self.dirs.pop()
                     self.any_dirs[ready_rank] = True
                     #print("Running dir {} on rank {}".format(next_dir, ready_rank))
-                self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute'])
-
-
+                    self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute'])
 
         # cleanup loop, send 'terminate' tag to each slave rank in
         # whatever order they become ready.

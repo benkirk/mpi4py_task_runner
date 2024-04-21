@@ -29,6 +29,10 @@ def format_number(val):
     if have_humanfriendly: return humanfriendly.format_number(val)
     return '{:,}'.format(val)
 
+def format_timespan(val):
+    if have_humanfriendly: return humanfriendly.format_timespan(val)
+    return '{:.1f} seconds'.format(val)
+
 
 ################################################################################
 class MPIClass:
