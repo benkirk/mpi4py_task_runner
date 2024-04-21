@@ -139,10 +139,14 @@ class MPIClass:
         self.gid_nitems = self.gather_and_sum_dict(self.gid_nitems)
         self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
 
-        print(sep)
-        for k,v in self.uid_nbytes.items():
-            print(pwd.getpwuid(k))
-            print('{} : {}'.format(k,format_size(v)))
+        if self.i_am_root:
+            print(sep)
+            for k,v in self.uid_nbytes.items():
+                try:
+                    username = pwd.getpwuid(k)[0]
+                except KeyError:
+                    username = '{}*'.format(k)
+                print('{:>12} : {}'.format(username,format_size(v)))
 
         stat_keys = set(self.st_modes.keys())
 

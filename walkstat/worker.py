@@ -128,8 +128,6 @@ class Worker(MPIClass):
 
             if next_dir:
                 assert next_dir
-
-                tstart = MPI.Wtime()
                 self.process_directory(next_dir)
 
         return
