@@ -63,7 +63,7 @@ class Worker(MPIClass):
                     # option 1: send dirs in batch
                     #self.dirs.append(pathname)
                     # option 2: send dirs individually
-                    requests.append( self.comm.isend([pathname, self.num_items, self.file_size], dest=0, tag=self.tags['dir_reply']) )
+                    requests.append( self.comm.issend([pathname, self.num_items, self.file_size], dest=0, tag=self.tags['dir_reply']) )
                 else:
                     self.num_files += 1
                     self.file_size += statinfo.st_size
