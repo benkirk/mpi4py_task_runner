@@ -59,6 +59,7 @@ class MPIClass:
         self.dirs = None
         self.num_files = 0
         self.num_dirs = 0
+        self.num_items = 0
         self.file_size = 0
         self.st_modes = defaultdict(int)
         self.uid_nitems = defaultdict(int)

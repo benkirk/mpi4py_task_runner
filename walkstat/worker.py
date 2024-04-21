@@ -15,6 +15,11 @@ class Worker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
+
+        #self.queue = queue.Queue(maxsize=5000)
+        #self.t = threading.Thread(target=self.process_queue, daemon=True)
+        #self.t.start()
+
         return
 
 
@@ -27,6 +32,7 @@ class Worker(MPIClass):
 
         #print("[{:3d}](d) {}".format(self.rank, dirname))
 
+        requests = []
         #-------------------------------------
         # python scandir implementation follows
         self.dirs = []
@@ -37,6 +43,9 @@ class Worker(MPIClass):
             dirdepth = dirname.count(os.path.sep)
 
             for di in os.scandir(dirname):
+
+                self.num_items += 1
+
                 f        = di.name
                 pathname = di.path
 
@@ -51,8 +60,10 @@ class Worker(MPIClass):
                 self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
 
                 if di.is_dir(follow_symlinks=False):
-                    self.dirs.append(pathname)
-
+                    # option 1: send dirs in batch
+                    #self.dirs.append(pathname)
+                    # option 2: send dirs individually
+                    requests.append( self.comm.isend([pathname, self.num_items, self.file_size], dest=0, tag=self.tags['dir_reply']) )
                 else:
                     self.num_files += 1
                     self.file_size += statinfo.st_size
@@ -76,6 +87,8 @@ class Worker(MPIClass):
             #print(error)
             print('cannot scan {}'.format(dirname), file=sys.stderr)
 
+        # OK, messages sent, wait for all to complete
+        MPI.Request.waitall(requests)
         return
 
 
@@ -104,17 +117,35 @@ class Worker(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def process_queue(self):
+
+        while True:
+            item = self.queue.get()
+            if item:
+                print("[{:3d}] {}".format(self.rank, item))
+            self.queue.task_done()
+
+            if item is None:
+                print("[{:3d}] *** terminating thread ***".format(self.rank))
+                assert self.queue.empty()
+                break
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
         status = MPI.Status()
         while True:
 
-            if self.dirs:
-                # abuse self.dirs - append our current counts, this allows manager
-                # to summarize collective progress while only sending a single message
-                self.dirs.append(sum(self.st_modes.values()))
-                self.dirs.append(self.file_size)
-                self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
-                self.dirs = None
+            # # option 1: send dirs in batch
+            # if self.dirs:
+            #     # abuse self.dirs - append our current counts, this allows manager
+            #     # to summarize collective progress while only sending a single message
+            #     self.dirs.append(self.num_items)
+            #     self.dirs.append(self.file_size)
+            #     self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
+            #     self.dirs = None
 
             # signal Master we are ready for the next task. We can do this
             # asynchronously, without a request, because we can infer completion
@@ -129,5 +160,9 @@ class Worker(MPIClass):
             if next_dir:
                 assert next_dir
                 self.process_directory(next_dir)
+
+        # Done with MPI bits, tell our thread
+        #self.queue.put(None)
+        #if self.t.is_alive(): self.t.join()
 
         return
