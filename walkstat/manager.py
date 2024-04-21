@@ -15,7 +15,9 @@ class Manager(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self,dirs=None,options=None):
         MPIClass.__init__(self,options)
-        self.iteration=0
+        self.iteration = 0
+        self.nsends = 0
+        self.nrecvs = 0
         self.dirs = dirs
         self.num_files = 0
         self.num_dirs = 0
@@ -83,12 +85,12 @@ class Manager(MPIClass):
                 ready_rank = status.Get_source()
                 self.any_dirs[0]          = True
                 self.any_dirs[ready_rank] = False
-                more_dirs = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply'])
+                more_dirs = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply']); self.nrecvs += 1
                 assert more_dirs
                 self.progress_sizes[ready_rank] = more_dirs.pop()
                 self.progress_counts[ready_rank] = more_dirs.pop()
                 self.dirs.extend(more_dirs)
-                #print(" *** master received a dir_reply from [{:3d}] {} ***".format(ready_rank, more_dirs))
+                #print(' *** master received a dir_reply from [{:3d}] {} ***'.format(ready_rank, more_dirs))
                 self.report_progress()
 
             # check for incoming ready status
@@ -97,22 +99,23 @@ class Manager(MPIClass):
                 #print(ready_rank)
                 self.any_dirs[ready_rank] = False
                 if self.dirs:
-                    self.comm.recv(source=ready_rank, tag=self.tags['ready'])
+                    self.comm.recv(source=ready_rank, tag=self.tags['ready']); self.nrecvs += 1
                     next_dir  = self.dirs.pop()
                     self.any_dirs[ready_rank] = True
-                    #print("Running dir {} on rank {}".format(next_dir, ready_rank))
-                    self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute'])
+                    #print('Running dir {} on rank {}'.format(next_dir, ready_rank))
+                    self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute']); self.nsends += 1
 
         # cleanup loop, send 'terminate' tag to each slave rank in
         # whatever order they become ready.
         # Don't forget to catch their final 'result'
-        print("  --> Finished dispatch, Terminating ranks")
+        print('  --> Progress loop completed ({} sends / {} recvs)'.format(format_number(self.nsends),
+                                                                           format_number(self.nrecvs)))
+        print('  --> Finished dispatch, Terminating ranks')
         requests = []
         for s in range(1,self.nranks):
-            self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status)
+            self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status); self.nrecvs += 1
             # send terminate tag, but no need to wait
-            requests.append(
-                self.comm.isend(None, dest=status.Get_source(), tag=self.tags['terminate']))
+            requests.append(self.comm.isend(None, dest=status.Get_source(), tag=self.tags['terminate'])); self.nsends += 1
 
         # OK, messages sent, wait for all to complete
         MPI.Request.waitall(requests)
