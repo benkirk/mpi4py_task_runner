@@ -57,6 +57,7 @@ class MPIClass:
         self.options = self.comm.bcast(options)
 
         self.dirs = None
+        self.maxnumdirs = 0
         self.num_files = 0
         self.num_dirs = 0
         self.num_items = 0

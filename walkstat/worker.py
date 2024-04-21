@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-from mpiclass import MPIClass
+from mpiclass import MPIClass, format_number
 import os, sys, stat
 import shutil
 #import threading
 #import queue
 
-send_dir_lists = False
+send_dir_lists = True
 
 ################################################################################
 class Worker(MPIClass):
@@ -30,7 +30,7 @@ class Worker(MPIClass):
         self.num_dirs += 1
         self.st_modes['dir'] += 1
 
-        #print("[{:3d}](d) {}".format(self.rank, dirname))
+        #print('[{:3d}](d) {}'.format(self.rank, dirname))
 
         requests = []
         #-------------------------------------
@@ -61,11 +61,9 @@ class Worker(MPIClass):
 
                 if di.is_dir(follow_symlinks=False):
                     # option 1: send dirs in batch
-                    if send_dir_lists:
-                        self.dirs.append(pathname)
+                    if send_dir_lists: self.dirs.append(pathname)
                     # option 2: send dirs individually
-                    else:
-                        requests.append( self.comm.isend([pathname, self.num_items, self.file_size], dest=0, tag=self.tags['dir_reply']) )
+                    else: requests.append( self.comm.isend([pathname, self.num_items, self.file_size], dest=0, tag=self.tags['dir_reply']) )
                 else:
                     self.num_files += 1
                     self.file_size += statinfo.st_size
@@ -99,7 +97,7 @@ class Worker(MPIClass):
     def process_file(self, filename, statinfo):
         assert(False)
         #return
-        ##print("[{:3d}](f) {}".format(self.rank, filename))
+        ##print('[{:3d}](f) {}'.format(self.rank, filename))
         #
         #self.num_files += 1
         #self.file_size += statinfo.st_size
@@ -124,11 +122,11 @@ class Worker(MPIClass):
         while True:
             item = self.queue.get()
             if item:
-                print("[{:3d}] {}".format(self.rank, item))
+                print('[{:3d}] {}'.format(self.rank, item))
             self.queue.task_done()
 
             if item is None:
-                print("[{:3d}] *** terminating thread ***".format(self.rank))
+                print('[{:3d}] *** terminating thread ***'.format(self.rank))
                 assert self.queue.empty()
                 break
         return
@@ -142,6 +140,7 @@ class Worker(MPIClass):
 
             # option 1: send dirs in batch
             if self.dirs:
+                self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
                 # abuse self.dirs - append our current counts, this allows manager
                 # to summarize collective progress while only sending a single message
                 self.dirs.append(self.num_items)
@@ -166,5 +165,6 @@ class Worker(MPIClass):
         # Done with MPI bits, tell our thread
         #self.queue.put(None)
         #if self.t.is_alive(): self.t.join()
-
+        print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
+                                                                           format_number(self.maxnumdirs)))
         return

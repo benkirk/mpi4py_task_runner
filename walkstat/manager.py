@@ -90,6 +90,7 @@ class Manager(MPIClass):
                 self.progress_sizes[ready_rank] = more_dirs.pop()
                 self.progress_counts[ready_rank] = more_dirs.pop()
                 self.dirs.extend(more_dirs)
+                self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
                 #print(' *** master received a dir_reply from [{:3d}] {} ***'.format(ready_rank, more_dirs))
                 self.report_progress()
 
@@ -110,6 +111,7 @@ class Manager(MPIClass):
         # Don't forget to catch their final 'result'
         print('  --> Progress loop completed ({} sends / {} recvs)'.format(format_number(self.nsends),
                                                                            format_number(self.nrecvs)))
+        print('  --> Maximum # of dirs at once on manager: {}'.format(format_number(self.maxnumdirs)))
         print('  --> Finished dispatch, Terminating ranks')
         requests = []
         for s in range(1,self.nranks):
