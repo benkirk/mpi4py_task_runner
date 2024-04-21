@@ -72,8 +72,9 @@ class Worker(MPIClass):
             self.top_nitems_dirs.add((thisdir_nitems, dirname))
             self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
 
-        except:
-            print('cannot scan {}'.format(dirname))
+        except Exception as error:
+            #print(error)
+            print('cannot scan {}'.format(dirname), file=sys.stderr)
 
         return
 

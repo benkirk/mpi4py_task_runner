@@ -3,6 +3,7 @@
 from mpi4py import MPI
 import os
 import sys
+import pwd
 import tempfile
 import shutil
 import platform
@@ -111,7 +112,21 @@ class MPIClass:
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def gather_and_sum_dict(self, my_part):
+        result = defaultdict(int)
+        parts = self.comm.gather(list(my_part.items()))
+        if parts:
+            for part in parts:
+                for k,v in part:
+                    result[k] += v
+        return result
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def summary(self, verbose=False):
+
+        sep="-"*80
 
         #self.comm.Barrier()
 
@@ -119,11 +134,19 @@ class MPIClass:
         self.top_nitems_dirs.reset( flatten( self.comm.gather(self.top_nitems_dirs.get_list()) ) )
         self.top_nbytes_dirs.reset( flatten( self.comm.gather(self.top_nbytes_dirs.get_list()) ) )
 
+        self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
+        self.uid_nbytes = self.gather_and_sum_dict(self.uid_nbytes)
+        self.gid_nitems = self.gather_and_sum_dict(self.gid_nitems)
+        self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
+
+        print(sep)
+        for k,v in self.uid_nbytes.items():
+            print(pwd.getpwuid(k))
+            print('{} : {}'.format(k,format_size(v)))
+
         stat_keys = set(self.st_modes.keys())
 
         sys.stdout.flush()
-
-        sep="-"*80
 
         # print end message
         for p in range(0,self.nranks):

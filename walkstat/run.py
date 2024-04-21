@@ -10,6 +10,8 @@ rank = comm.Get_rank()
 size = comm.Get_size()
 assert size > 1
 
+comm.Barrier()
+
 # workers on ranks [1,size)
 if rank:
     worker = Worker()
