@@ -7,7 +7,7 @@ import shutil
 #import threading
 #import queue
 
-
+send_dir_lists = False
 
 ################################################################################
 class Worker(MPIClass):
@@ -61,9 +61,11 @@ class Worker(MPIClass):
 
                 if di.is_dir(follow_symlinks=False):
                     # option 1: send dirs in batch
-                    #self.dirs.append(pathname)
+                    if send_dir_lists:
+                        self.dirs.append(pathname)
                     # option 2: send dirs individually
-                    requests.append( self.comm.issend([pathname, self.num_items, self.file_size], dest=0, tag=self.tags['dir_reply']) )
+                    else:
+                        requests.append( self.comm.isend([pathname, self.num_items, self.file_size], dest=0, tag=self.tags['dir_reply']) )
                 else:
                     self.num_files += 1
                     self.file_size += statinfo.st_size
@@ -138,14 +140,14 @@ class Worker(MPIClass):
         status = MPI.Status()
         while True:
 
-            # # option 1: send dirs in batch
-            # if self.dirs:
-            #     # abuse self.dirs - append our current counts, this allows manager
-            #     # to summarize collective progress while only sending a single message
-            #     self.dirs.append(self.num_items)
-            #     self.dirs.append(self.file_size)
-            #     self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
-            #     self.dirs = None
+            # option 1: send dirs in batch
+            if self.dirs:
+                # abuse self.dirs - append our current counts, this allows manager
+                # to summarize collective progress while only sending a single message
+                self.dirs.append(self.num_items)
+                self.dirs.append(self.file_size)
+                self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
+                self.dirs = None
 
             # signal Master we are ready for the next task. We can do this
             # asynchronously, without a request, because we can infer completion
