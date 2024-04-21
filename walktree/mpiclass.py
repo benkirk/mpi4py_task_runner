@@ -132,16 +132,16 @@ class MPIClass:
 
         sep="-"*80
 
-        #self.comm.Barrier()
-
         # gather heaps
         self.top_nitems_dirs.reset( flatten( self.comm.gather(self.top_nitems_dirs.get_list()) ) )
         self.top_nbytes_dirs.reset( flatten( self.comm.gather(self.top_nbytes_dirs.get_list()) ) )
 
+        self.st_modes   = self.gather_and_sum_dict(self.st_modes)
         self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
         self.uid_nbytes = self.gather_and_sum_dict(self.uid_nbytes)
         self.gid_nitems = self.gather_and_sum_dict(self.gid_nitems)
         self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
+        sys.stdout.flush()
 
         if self.i_am_root:
             print(sep)
@@ -152,18 +152,8 @@ class MPIClass:
                     username = '{}*'.format(k)
                 print('{:>12} : {}'.format(username,format_size(v)))
 
-        stat_keys = set(self.st_modes.keys())
-
-        sys.stdout.flush()
-
-        # print end message
-        for p in range(0,self.nranks):
-
-            # get stat keys from rank.
-            # Somehow broadcasting a set object seems to fail, so use a list
-            stat_keys.update( set(self.comm.bcast(list(self.st_modes.keys()), root=p)) )
-
-            if verbose:
+        if verbose:
+            for p in range(0,self.nranks):
                 self.comm.Barrier()
                 sys.stdout.flush()
                 if p == self.rank:
@@ -176,21 +166,11 @@ class MPIClass:
                             print("   {:5s} : {:,}".format(k,v))
                         print("   {:5s} : {}".format('size',format_size(self.file_size)))
 
-        self.comm.Barrier()
-        sys.stdout.flush()
-
         if self.i_am_root:
             print(sep)
             print("Totals from all ranks:")
-
-        # important to go through common keys in sorted order so we are adding the
-        # same values
-        stat_keys=list(stat_keys)
-        stat_keys.sort()
-        for k in stat_keys:
-            summed_val = self.comm.reduce(self.st_modes[k], MPI.SUM)
-            if self.i_am_root:
-                print("   {:5s} : {:,}".format(k, summed_val))
+            for k,v in self.st_modes.items():
+                print("   {:5s} : {:,}".format(k, v))
 
         sys.stdout.flush()
         nfiles_tot = self.comm.reduce(self.num_files, MPI.SUM)
