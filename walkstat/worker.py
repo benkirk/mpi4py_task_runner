@@ -40,40 +40,39 @@ class Worker(MPIClass):
 
             dirdepth = dirname.count(os.path.sep)
 
-            with os.scandir(dirname) as it:
-                for di in it:
+            for di in os.scandir(dirname):
 
-                    self.num_items += 1
+                self.num_items += 1
 
-                    pathname = di.path
+                pathname = di.path
 
-                    statinfo = di.stat(follow_symlinks=False)
+                statinfo = di.stat(follow_symlinks=False)
 
-                    thisdir_nitems += 1
-                    thisdir_nbytes += statinfo.st_size
+                thisdir_nitems += 1
+                thisdir_nbytes += statinfo.st_size
 
-                    self.uid_nitems[statinfo.st_uid] += 1
-                    self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
-                    self.gid_nitems[statinfo.st_gid] += 1
-                    self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
+                self.uid_nitems[statinfo.st_uid] += 1
+                self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
+                self.gid_nitems[statinfo.st_gid] += 1
+                self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
 
-                    if di.is_dir(follow_symlinks=False):
-                        self.dirs.append(pathname)
-                        #if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.ssend_my_dirlist()
-                    else:
-                        self.num_files += 1
-                        self.file_size += statinfo.st_size
+                if di.is_dir(follow_symlinks=False):
+                    self.dirs.append(pathname)
+                    if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.send_my_dirlist()
+                else:
+                    self.num_files += 1
+                    self.file_size += statinfo.st_size
 
-                        # decode file type
-                        fmode = statinfo.st_mode
-                        if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
-                        elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
-                        elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
-                        elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
-                        elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
-                        elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
-                        elif stat.S_ISDIR(fmode):  assert False # huh??
-                        #self.process_file(pathname, statinfo)
+                    # decode file type
+                    fmode = statinfo.st_mode
+                    if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
+                    elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
+                    elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
+                    elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
+                    elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
+                    elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
+                    elif stat.S_ISDIR(fmode):  assert False # huh??
+                    #self.process_file(pathname, statinfo)
 
             # track the size & count of this directory in our top heaps
             self.top_nitems_dirs.add((thisdir_nitems, dirname))
@@ -111,14 +110,14 @@ class Worker(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def ssend_my_dirlist(self):
+    def send_my_dirlist(self):
         if self.dirs:
             self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
             # abuse self.dirs - append our current counts, this allows manager
             # to summarize collective progress while only sending a single message
             self.dirs.append(self.num_items)
             self.dirs.append(self.file_size)
-            self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
+            self.comm.send(self.dirs, dest=0, tag=self.tags['dir_reply'])
             self.dirs = []
         return
 
@@ -131,7 +130,7 @@ class Worker(MPIClass):
         while True:
 
             # send our dir list to manager (if any)
-            self.ssend_my_dirlist()
+            self.send_my_dirlist()
 
             # signal manager we are ready for the next task. We can do this
             self.comm.ssend(None, dest=0, tag=self.tags['ready'])
@@ -145,6 +144,6 @@ class Worker(MPIClass):
                 assert next_dir
                 self.process_directory(next_dir)
 
-        print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
-                                                                           format_number(self.maxnumdirs)))
+        #print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
+        #                                                                   format_number(self.maxnumdirs)))
         return
