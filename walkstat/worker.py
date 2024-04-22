@@ -140,12 +140,12 @@ class Worker(MPIClass):
             # signal manager we are ready for the next task.
             self.comm.ssend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
 
-            # receive instructions from Master
+            # receive instructions from Manager
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
 
             if status.Get_tag() == self.tags['terminate']: break
-            else:
-                assert next_dir
+
+            if next_dir:
                 assert (status.Get_tag() == self.tags['execute'])
                 self.process_directory(next_dir)
 
