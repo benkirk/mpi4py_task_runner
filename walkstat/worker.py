@@ -42,14 +42,14 @@ class Worker(MPIClass):
 
             for di in os.scandir(dirname):
 
-                self.num_items += 1
-
                 pathname = di.path
 
                 statinfo = di.stat(follow_symlinks=False)
 
                 thisdir_nitems += 1
                 thisdir_nbytes += statinfo.st_size
+                self.num_items += 1
+                self.total_size += statinfo.st_size
 
                 self.uid_nitems[statinfo.st_uid] += 1
                 self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
@@ -61,7 +61,6 @@ class Worker(MPIClass):
                     if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.send_my_dirlist()
                 else:
                     self.num_files += 1
-                    self.file_size += statinfo.st_size
 
                     # decode file type
                     fmode = statinfo.st_mode
@@ -93,7 +92,7 @@ class Worker(MPIClass):
         ##print('[{:3d}](f) {}'.format(self.rank, filename))
         #
         #self.num_files += 1
-        #self.file_size += statinfo.st_size
+        #self.total_size += statinfo.st_size
         #
         ## decode file type
         #fmode = statinfo.st_mode
@@ -116,7 +115,7 @@ class Worker(MPIClass):
             # abuse self.dirs - append our current counts, this allows manager
             # to summarize collective progress while only sending a single message
             self.dirs.append(self.num_items)
-            self.dirs.append(self.file_size)
+            self.dirs.append(self.total_size)
             self.comm.send(self.dirs, dest=0, tag=self.tags['dir_reply'])
             self.dirs = []
         return
@@ -133,7 +132,7 @@ class Worker(MPIClass):
             self.send_my_dirlist()
 
             # signal manager we are ready for the next task.
-            self.comm.ssend([self.num_items, self.file_size], dest=0, tag=self.tags['ready'])
+            self.comm.ssend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
 
             # receive instructions from Master
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)

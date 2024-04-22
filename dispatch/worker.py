@@ -87,7 +87,7 @@ class Worker(MPIClass):
 
         self.num_files += 1
 
-        self.file_size += statinfo.st_size
+        self.total_size += statinfo.st_size
         self.tar_size  += statinfo.st_size
 
         # decode file type
