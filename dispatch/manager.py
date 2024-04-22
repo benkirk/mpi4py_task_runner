@@ -18,7 +18,7 @@ class Manager(MPIClass):
         self.dirs = dirs
         self.num_files = 0
         self.num_dirs = 0
-        self.file_size = 0
+        self.total_size = 0
         return
 
 

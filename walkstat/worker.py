@@ -27,14 +27,18 @@ class Worker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_directory(self, dirname):
 
+        self.dirs = []
+
+        # last-minute check for a race condition:
+        if not os.path.exists(dirname):
+            print('[{:3d}] directory \'{}\' vanished'.format(self.rank, dirname), file=sys.stderr)
+            return
+
         self.num_dirs += 1
         self.st_modes['dir'] += 1
 
         #print('[{:3d}](d) {}'.format(self.rank, dirname))
 
-        #-------------------------------------
-        # python scandir implementation follows
-        self.dirs = []
         try:
             thisdir_nitems = 0
             thisdir_nbytes = 0
@@ -43,15 +47,14 @@ class Worker(MPIClass):
 
             for di in os.scandir(dirname):
 
-                self.num_items += 1
-
-                f        = di.name
                 pathname = di.path
 
                 statinfo = di.stat(follow_symlinks=False)
 
                 thisdir_nitems += 1
                 thisdir_nbytes += statinfo.st_size
+                self.num_items += 1
+                self.total_size += statinfo.st_size
 
                 self.uid_nitems[statinfo.st_uid] += 1
                 self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
@@ -60,10 +63,9 @@ class Worker(MPIClass):
 
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
-                    if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.ssend_my_dirlist()
+                    if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.send_my_dirlist()
                 else:
                     self.num_files += 1
-                    self.file_size += statinfo.st_size
 
                     # decode file type
                     fmode = statinfo.st_mode
@@ -81,7 +83,7 @@ class Worker(MPIClass):
             self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
 
         except Exception as error:
-            print(error, file=sys.stderr)
+            print('[{:3d}] {}'.format(self.rank, error), file=sys.stderr)
             #print('cannot scan {}'.format(dirname), file=sys.stderr)
 
         return
@@ -95,7 +97,7 @@ class Worker(MPIClass):
         ##print('[{:3d}](f) {}'.format(self.rank, filename))
         #
         #self.num_files += 1
-        #self.file_size += statinfo.st_size
+        #self.total_size += statinfo.st_size
         #
         ## decode file type
         #fmode = statinfo.st_mode
@@ -112,32 +114,15 @@ class Worker(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def process_queue(self):
-
-        while True:
-            item = self.queue.get()
-            if item:
-                print('[{:3d}] {}'.format(self.rank, item))
-            self.queue.task_done()
-
-            if item is None:
-                print('[{:3d}] *** terminating thread ***'.format(self.rank))
-                assert self.queue.empty()
-                break
-        return
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def ssend_my_dirlist(self):
+    def send_my_dirlist(self):
         # option 1: send dirs in batch
         if self.dirs:
             self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
             # abuse self.dirs - append our current counts, this allows manager
             # to summarize collective progress while only sending a single message
             self.dirs.append(self.num_items)
-            self.dirs.append(self.file_size)
-            self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
+            self.dirs.append(self.total_size)
+            self.comm.send(self.dirs, dest=0, tag=self.tags['dir_reply'])
             self.dirs = []
         return
 
@@ -150,10 +135,10 @@ class Worker(MPIClass):
         while True:
 
             # send our dir list to manager (if any)
-            self.ssend_my_dirlist()
+            self.send_my_dirlist()
 
-            # signal manager we are ready for the next task. We can do this
-            self.comm.ssend(None, dest=0, tag=self.tags['ready'])
+            # signal manager we are ready for the next task.
+            self.comm.ssend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
 
             # receive instructions from Master
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
@@ -164,9 +149,6 @@ class Worker(MPIClass):
                 assert (status.Get_tag() == self.tags['execute'])
                 self.process_directory(next_dir)
 
-        # Done with MPI bits, tell our thread
-        #self.queue.put(None)
-        #if self.t.is_alive(): self.t.join()
-        print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
-                                                                           format_number(self.maxnumdirs)))
+        #print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
+        #                                                                   format_number(self.maxnumdirs)))
         return

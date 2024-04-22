@@ -33,7 +33,6 @@ def format_timespan(val):
     if have_humanfriendly: return humanfriendly.format_timespan(val)
     return '{:.1f} seconds'.format(val)
 
-
 ################################################################################
 class MPIClass:
 
@@ -61,7 +60,7 @@ class MPIClass:
         self.num_files = 0
         self.num_dirs = 0
         self.num_items = 0
-        self.file_size = 0
+        self.total_size = 0
         self.st_modes = defaultdict(int)
         self.uid_nitems = defaultdict(int)
         self.uid_nbytes = defaultdict(int)
@@ -167,7 +166,7 @@ class MPIClass:
                                                                                  self.num_files, self.num_dirs))
                         for k,v in self.st_modes.items():
                             print("   {:5s} : {:,}".format(k,v))
-                        print("   {:5s} : {}".format('size',format_size(self.file_size)))
+                        print("   {:5s} : {}".format('size',format_size(self.total_size)))
 
         if self.i_am_root:
             print(sep)
@@ -178,7 +177,7 @@ class MPIClass:
         sys.stdout.flush()
         nfiles_tot = self.comm.reduce(self.num_files, MPI.SUM)
         ndirs_tot  = self.comm.reduce(self.num_dirs,  MPI.SUM)
-        fsize_tot  = self.comm.reduce(self.file_size, MPI.SUM)
+        fsize_tot  = self.comm.reduce(self.total_size, MPI.SUM)
 
         if self.i_am_root:
             print("{}\nTotal found: {:,} objects = {:,} files + {:,} dirs".format(sep,
