@@ -16,9 +16,11 @@ comm.Barrier()
 if rank:
     worker = Worker()
     worker.run()
+    worker.summary()
 
 # manager on rank 0
 else:
+    print('Running on {} MPI ranks'.format(size))
     dirs = []
     if len(sys.argv) == 1:
         dirs.append('.')
@@ -29,7 +31,9 @@ else:
                 dirs.append(arg)
 
     print(dirs)
+    sys.stdout.flush()
     options = set() #set(['archive'])
 
     manager = Manager(dirs, options)
     manager.run()
+    manager.summary()

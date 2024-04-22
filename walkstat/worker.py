@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-from mpiclass import MPIClass
+from mpiclass import MPIClass, format_number
 import os, sys, stat
 import shutil
 #import threading
 #import queue
 
-
+MAXDIRS_BEFORE_SEND = 200
 
 ################################################################################
 class Worker(MPIClass):
@@ -25,7 +25,7 @@ class Worker(MPIClass):
         self.num_dirs += 1
         self.st_modes['dir'] += 1
 
-        #print("[{:3d}](d) {}".format(self.rank, dirname))
+        #print('[{:3d}](d) {}'.format(self.rank, dirname))
 
         #-------------------------------------
         # python scandir implementation follows
@@ -37,6 +37,9 @@ class Worker(MPIClass):
             dirdepth = dirname.count(os.path.sep)
 
             for di in os.scandir(dirname):
+
+                self.num_items += 1
+
                 f        = di.name
                 pathname = di.path
 
@@ -52,7 +55,7 @@ class Worker(MPIClass):
 
                 if di.is_dir(follow_symlinks=False):
                     self.dirs.append(pathname)
-
+                    #if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.ssend_my_dirlist()
                 else:
                     self.num_files += 1
                     self.file_size += statinfo.st_size
@@ -73,8 +76,8 @@ class Worker(MPIClass):
             self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
 
         except Exception as error:
-            #print(error)
-            print('cannot scan {}'.format(dirname), file=sys.stderr)
+            print(error, file=sys.stderr)
+            #print('cannot scan {}'.format(dirname), file=sys.stderr)
 
         return
 
@@ -84,7 +87,7 @@ class Worker(MPIClass):
     def process_file(self, filename, statinfo):
         assert(False)
         #return
-        ##print("[{:3d}](f) {}".format(self.rank, filename))
+        ##print('[{:3d}](f) {}'.format(self.rank, filename))
         #
         #self.num_files += 1
         #self.file_size += statinfo.st_size
@@ -104,21 +107,29 @@ class Worker(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def ssend_my_dirlist(self):
+        if self.dirs:
+            self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
+            # abuse self.dirs - append our current counts, this allows manager
+            # to summarize collective progress while only sending a single message
+            self.dirs.append(self.num_items)
+            self.dirs.append(self.file_size)
+            self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
+            self.dirs = []
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
+        self.comm.Barrier()
         status = MPI.Status()
         while True:
 
-            if self.dirs:
-                # abuse self.dirs - append our current counts, this allows manager
-                # to summarize collective progress while only sending a single message
-                self.dirs.append(sum(self.st_modes.values()))
-                self.dirs.append(self.file_size)
-                self.comm.ssend(self.dirs, dest=0, tag=self.tags['dir_reply'])
-                self.dirs = None
+            # send our dir list to manager (if any)
+            self.ssend_my_dirlist()
 
-            # signal Master we are ready for the next task. We can do this
-            # asynchronously, without a request, because we can infer completion
-            # with the subsequent recv.
+            # signal manager we are ready for the next task. We can do this
             self.comm.ssend(None, dest=0, tag=self.tags['ready'])
 
             # receive instructions from Master
@@ -130,4 +141,6 @@ class Worker(MPIClass):
                 assert next_dir
                 self.process_directory(next_dir)
 
+        print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
+                                                                           format_number(self.maxnumdirs)))
         return
