@@ -71,6 +71,7 @@ class Manager(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
 
+        self.comm.Barrier()
         status = MPI.Status()
 
         # execution loop, until we determine we are finished.

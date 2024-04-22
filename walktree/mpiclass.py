@@ -78,7 +78,6 @@ class MPIClass:
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __del__(self):
         self.cleanup()
-        self.summary()
         return
 
 
@@ -131,6 +130,8 @@ class MPIClass:
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def summary(self, verbose=False):
+
+        self.comm.Barrier()
 
         sep="-"*80
 

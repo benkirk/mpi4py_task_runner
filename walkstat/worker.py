@@ -145,15 +145,14 @@ class Worker(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def run(self):
+        self.comm.Barrier()
         status = MPI.Status()
         while True:
 
             # send our dir list to manager (if any)
             self.ssend_my_dirlist()
 
-            # signal Master we are ready for the next task. We can do this
-            # asynchronously, without a request, because we can infer completion
-            # with the subsequent recv.
+            # signal manager we are ready for the next task. We can do this
             self.comm.ssend(None, dest=0, tag=self.tags['ready'])
 
             # receive instructions from Master

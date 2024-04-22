@@ -16,6 +16,7 @@ comm.Barrier()
 if rank:
     worker = Worker()
     worker.run()
+    worker.summary()
 
 # manager on rank 0
 else:
@@ -35,3 +36,4 @@ else:
 
     manager = Manager(dirs, options)
     manager.run()
+    manager.summary()
