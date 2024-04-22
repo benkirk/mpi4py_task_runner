@@ -25,7 +25,7 @@ class Worker(MPIClass):
         self.dirs = []
 
         # last-minute check for a race condition:
-        if not os.path.isdir(dirname): return
+        if not os.path.exists(dirname): return
 
         self.num_dirs += 1
         self.st_modes['dir'] += 1
@@ -38,40 +38,40 @@ class Worker(MPIClass):
 
             dirdepth = dirname.count(os.path.sep)
 
-            for di in os.scandir(dirname):
+            with os.scandir(dirname) as it:
+                for di in it:
 
-                self.num_items += 1
+                    self.num_items += 1
 
-                f        = di.name
-                pathname = di.path
+                    pathname = di.path
 
-                statinfo = di.stat(follow_symlinks=False)
+                    statinfo = di.stat(follow_symlinks=False)
 
-                thisdir_nitems += 1
-                thisdir_nbytes += statinfo.st_size
+                    thisdir_nitems += 1
+                    thisdir_nbytes += statinfo.st_size
 
-                self.uid_nitems[statinfo.st_uid] += 1
-                self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
-                self.gid_nitems[statinfo.st_gid] += 1
-                self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
+                    self.uid_nitems[statinfo.st_uid] += 1
+                    self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
+                    self.gid_nitems[statinfo.st_gid] += 1
+                    self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
 
-                if di.is_dir(follow_symlinks=False):
-                    self.dirs.append(pathname)
-                    #if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.ssend_my_dirlist()
-                else:
-                    self.num_files += 1
-                    self.file_size += statinfo.st_size
+                    if di.is_dir(follow_symlinks=False):
+                        self.dirs.append(pathname)
+                        #if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.ssend_my_dirlist()
+                    else:
+                        self.num_files += 1
+                        self.file_size += statinfo.st_size
 
-                    # decode file type
-                    fmode = statinfo.st_mode
-                    if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
-                    elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
-                    elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
-                    elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
-                    elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
-                    elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
-                    elif stat.S_ISDIR(fmode):  assert False # huh??
-                    #self.process_file(pathname, statinfo)
+                        # decode file type
+                        fmode = statinfo.st_mode
+                        if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
+                        elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
+                        elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
+                        elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
+                        elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
+                        elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
+                        elif stat.S_ISDIR(fmode):  assert False # huh??
+                        #self.process_file(pathname, statinfo)
 
             # track the size & count of this directory in our top heaps
             self.top_nitems_dirs.add((thisdir_nitems, dirname))
