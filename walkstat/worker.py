@@ -76,7 +76,7 @@ class Worker(MPIClass):
             self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
 
         except Exception as error:
-            print(error, file=sys.stderr)
+            print('[{:3d}] {}'.format(self.rank, error), file=sys.stderr)
             #print('cannot scan {}'.format(dirname), file=sys.stderr)
 
         return
