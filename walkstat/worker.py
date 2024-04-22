@@ -15,6 +15,11 @@ class Worker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
+
+        #self.queue = queue.Queue(maxsize=5000)
+        #self.t = threading.Thread(target=self.process_queue, daemon=True)
+        #self.t.start()
+
         return
 
 
@@ -110,6 +115,7 @@ class Worker(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def send_my_dirlist(self):
+        # option 1: send dirs in batch
         if self.dirs:
             self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
             # abuse self.dirs - append our current counts, this allows manager
@@ -138,9 +144,9 @@ class Worker(MPIClass):
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
 
             if status.Get_tag() == self.tags['terminate']: break
-
-            if next_dir:
+            else:
                 assert next_dir
+                assert (status.Get_tag() == self.tags['execute'])
                 self.process_directory(next_dir)
 
         #print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,

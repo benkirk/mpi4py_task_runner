@@ -70,6 +70,7 @@ class Manager(MPIClass):
                                                                 format_number(self.nrecvs))
 
         print(status)
+
         sys.stdout.flush()
         return
 
@@ -104,7 +105,6 @@ class Manager(MPIClass):
                 self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
                 #print(' *** master received a dir_reply from [{:3d}] {} ***'.format(ready_rank, more_dirs))
 
-
             # check for incoming ready status
             # case 1: we have data, we can probe any source since we're about to send them work.
             if self.dirs: probe_source=MPI.ANY_SOURCE
@@ -125,6 +125,7 @@ class Manager(MPIClass):
                     self.any_dirs[ready_rank] = True
                     #print('Running dir {} on rank {}'.format(next_dir, ready_rank))
                 self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute']); self.nsends += 1
+
 
         # cleanup loop, send 'terminate' tag to each slave rank in
         # whatever order they become ready.
