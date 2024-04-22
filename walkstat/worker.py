@@ -25,7 +25,9 @@ class Worker(MPIClass):
         self.dirs = []
 
         # last-minute check for a race condition:
-        if not os.path.exists(dirname): return
+        if not os.path.exists(dirname):
+            print('[{:3d}] directory \'{}\' vanished'.format(self.rank, dirname), file=sys.stderr)
+            return
 
         self.num_dirs += 1
         self.st_modes['dir'] += 1
