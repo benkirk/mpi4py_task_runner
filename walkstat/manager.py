@@ -65,9 +65,9 @@ class Manager(MPIClass):
                                                                                           format_number(int(float(total_count)/elapsed)))
 
         if not forceprint:
-            status += ' [dirlen={}, #sends={}, #recvs={}]'.format(format_number(len(self.dirs)),
-                                                                  format_number(self.nsends),
-                                                                  format_number(self.nrecvs))
+            status += ' [dirlen={}, sends={}, recvs={}]'.format(format_number(len(self.dirs)),
+                                                                format_number(self.nsends),
+                                                                format_number(self.nrecvs))
 
         print(status)
         sys.stdout.flush()
@@ -97,6 +97,7 @@ class Manager(MPIClass):
                 self.any_dirs[ready_rank] = False
                 more_dirs = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply']); self.nrecvs += 1
                 assert more_dirs
+                # workers append some count info to the send buffer, so retrieve that
                 self.progress_sizes[ready_rank] = more_dirs.pop()
                 self.progress_counts[ready_rank] = more_dirs.pop()
                 self.dirs.extend(more_dirs)
@@ -115,7 +116,9 @@ class Manager(MPIClass):
             if self.comm.iprobe(source=probe_source, tag=self.tags['ready'], status=status):
                 ready_rank = status.Get_source()
                 self.any_dirs[ready_rank] = False
-                self.comm.recv(source=ready_rank, tag=self.tags['ready']); self.nrecvs += 1
+                counts = self.comm.recv(source=ready_rank, tag=self.tags['ready']); self.nrecvs += 1
+                self.progress_sizes[ready_rank] = counts.pop()
+                self.progress_counts[ready_rank] = counts.pop()
                 next_dir = None
                 if self.dirs:
                     next_dir = self.dirs.pop()

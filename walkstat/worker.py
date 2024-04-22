@@ -132,8 +132,8 @@ class Worker(MPIClass):
             # send our dir list to manager (if any)
             self.send_my_dirlist()
 
-            # signal manager we are ready for the next task. We can do this
-            self.comm.ssend(None, dest=0, tag=self.tags['ready'])
+            # signal manager we are ready for the next task.
+            self.comm.ssend([self.num_items, self.file_size], dest=0, tag=self.tags['ready'])
 
             # receive instructions from Master
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
