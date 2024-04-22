@@ -64,9 +64,10 @@ class Manager(MPIClass):
                                                                                           format_timespan(elapsed),
                                                                                           format_number(int(float(total_count)/elapsed)))
 
-        if self.dirs: status += ' [dirlen={}, #sends={}, #recvs={}]'.format(format_number(len(self.dirs)),
-                                                                            format_number(self.nsends),
-                                                                            format_number(self.nrecvs))
+        if not forceprint:
+            status += ' [dirlen={}, #sends={}, #recvs={}]'.format(format_number(len(self.dirs)),
+                                                                  format_number(self.nsends),
+                                                                  format_number(self.nrecvs))
 
         print(status)
         sys.stdout.flush()

@@ -22,14 +22,16 @@ class Worker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_directory(self, dirname):
 
+        self.dirs = []
+
+        # last-minute check for a race condition:
+        if not os.path.isdir(dirname): return
+
         self.num_dirs += 1
         self.st_modes['dir'] += 1
 
         #print('[{:3d}](d) {}'.format(self.rank, dirname))
 
-        #-------------------------------------
-        # python scandir implementation follows
-        self.dirs = []
         try:
             thisdir_nitems = 0
             thisdir_nbytes = 0
