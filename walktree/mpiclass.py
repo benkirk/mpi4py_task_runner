@@ -100,7 +100,7 @@ class MPIClass:
 
         # # local_topdir from slurm is job specific, let's create a subdirectory
         # # for this spefific MPI rank
-        # self.local_rankdir = tempfile.mkdtemp(prefix="rank{}_".format(self.rank),
+        # self.local_rankdir = tempfile.mkdtemp(prefix='rank{}_'.format(self.rank),
         #                                       dir=local_topdir)
 
         return
@@ -140,7 +140,7 @@ class MPIClass:
 
         self.comm.Barrier()
 
-        sep="-"*80
+        sep='-'*80
 
         # gather heaps
         self.top_nitems_dirs.reset(  flatten( self.comm.gather(self.top_nitems_dirs.get_list())  ) )
@@ -163,11 +163,11 @@ class MPIClass:
                     if self.i_am_root:
                         print(sep)
                     else:
-                        print("rank {} / {}, found {:,} files, {:,} dirs".format(self.rank, platform.node(),
+                        print('rank {} / {}, found {:,} files, {:,} dirs'.format(self.rank, platform.node(),
                                                                                  self.num_files, self.num_dirs))
                         for k,v in self.st_modes.items():
-                            print("   {:5s} : {:,}".format(k,v))
-                        print("   {:5s} : {}".format('size',format_size(self.total_size)))
+                            print('   {:5s} : {:,}'.format(k,v))
+                        print('   {:5s} : {}'.format('size',format_size(self.total_size)))
 
         if self.i_am_root:
             # summarize uid/gid results
@@ -201,24 +201,14 @@ class MPIClass:
                 print('{:>12} : {}'.format(groupname,format_number(v)))
 
 
-        sys.stdout.flush()
-        # summarize top files & directories
-        nfiles_tot = self.comm.reduce(self.num_files,  MPI.SUM)
-        ndirs_tot  = self.comm.reduce(self.num_dirs,   MPI.SUM)
-        size_tot   = self.comm.reduce(self.total_size, MPI.SUM)
-
-        if self.i_am_root:
             # summarize stat types
             print('\n'+sep)
-            print("Types (from all ranks):")
-            for k,v in self.st_modes.items():
-                print("   {:5s} : {:,}".format(k, v))
+            print('Total Count: {} items'.format(format_number(self.progress_counts[0])))
+            print('Total Size:  {}'.format(format_size(self.progress_sizes[0])))
+            print('Type Counts:')
+            for k,v in self.st_modes.items(): print('   {:5s} : {:,}'.format(k, v))
 
-            print("Total Count: {:,} objects = {:,} files + {:,} dirs".format(nfiles_tot+ndirs_tot,
-                                                                              nfiles_tot,
-                                                                              ndirs_tot))
-            print("Total Size: {}".format(format_size(size_tot)))
-
+            # summarize top files & directories
             print(sep + '\nTop Dirs (file count):\n' + sep)
             for item in self.top_nitems_dirs.top(50): print('{:>10} {}'.format(format_number(item[0]), item[1]))
             print(sep + '\nTop Dirs (size):\n' + sep)

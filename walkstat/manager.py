@@ -107,12 +107,12 @@ class Manager(MPIClass):
 
             # check for incoming ready status
             # case 1: we have data, we can probe any source since we're about to send them work.
-            if self.dirs: probe_source=MPI.ANY_SOURCE
+            if self.dirs: probe_source = MPI.ANY_SOURCE
             # case 2: we have no data...  ANY_SOURCE is too flexibile - we can get in a spamming loop
-            # with just a handful of ranks, not ever realizing all the others are done too. so, to
+            # with just a handful of ranks, not ever realizing all the others are done too. So, to
             # handle this case we want to make sure we check each rank, not just the ones at the top
-            # of the probe queue
-            else: probe_source=randint(1,self.nranks-1)
+            # of the probe queue (yeah... this was observed, especially on Derecho).
+            else: probe_source = randint(1,self.nranks-1)
             if self.comm.iprobe(source=probe_source, tag=self.tags['ready'], status=status):
                 ready_rank = status.Get_source()
                 self.any_dirs[ready_rank] = False
@@ -128,17 +128,19 @@ class Manager(MPIClass):
 
 
         # cleanup loop, send 'terminate' tag to each slave rank in
-        # whatever order they become ready.
-        # Don't forget to catch their final 'result'
+        # whatever order they become ready. Don't forget to catch their final 'result'
         print('  --> Progress loop completed ({} sends / {} recvs)'.format(format_number(self.nsends),
                                                                            format_number(self.nrecvs)))
         print('  --> Maximum # of dirs at once on manager: {}'.format(format_number(self.maxnumdirs)))
         print('  --> Finished dispatch, Terminating ranks')
         requests = []
         for s in range(1,self.nranks):
-            self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status); self.nrecvs += 1
+            counts = self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status); self.nrecvs += 1
+            ready_rank = status.Get_source()
+            self.progress_sizes[ready_rank] = counts.pop()
+            self.progress_counts[ready_rank] = counts.pop()
             # send terminate tag, but no need to wait
-            requests.append(self.comm.isend(None, dest=status.Get_source(), tag=self.tags['terminate'])); self.nsends += 1
+            requests.append(self.comm.isend(None, dest=ready_rank, tag=self.tags['terminate'])); self.nsends += 1
 
         # OK, messages sent, wait for all to complete
         MPI.Request.waitall(requests)

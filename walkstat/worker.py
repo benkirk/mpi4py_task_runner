@@ -42,6 +42,9 @@ class Worker(MPIClass):
         try:
             thisdir_nitems = 0
             thisdir_nbytes = 0
+            thisdir_max_mtime = 0
+            thisdir_max_ctime = 0
+            thisdir_max_atime = 0
 
             dirdepth = dirname.count(os.path.sep)
 
@@ -61,22 +64,27 @@ class Worker(MPIClass):
                 self.gid_nitems[statinfo.st_gid] += 1
                 self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
 
-                if di.is_dir(follow_symlinks=False):
+                # decode file type
+                fmode = statinfo.st_mode
+
+                if stat.S_ISDIR(fmode):
                     self.dirs.append(pathname)
                     if len(self.dirs) == MAXDIRS_BEFORE_SEND: self.send_my_dirlist()
                 else:
                     self.num_files += 1
 
-                    # decode file type
-                    fmode = statinfo.st_mode
                     if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
                     elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
                     elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
                     elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
                     elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
                     elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
-                    elif stat.S_ISDIR(fmode):  assert False # huh??
                     #self.process_file(pathname, statinfo)
+
+                    # track the *maximum mtime/ctime/atime for this directories contents (not the dir itself though)
+                    thisdir_max_mtime = max(thisdir_max_mtime, statinfo.st_mtime)
+                    thisdir_max_ctime = max(thisdir_max_ctime, statinfo.st_ctime)
+                    thisdir_max_atime = max(thisdir_max_atime, statinfo.st_atime)
 
                     # track the size & count of this file in our top heap
                     self.top_nbytes_files.add((statinfo.st_size, pathname))
@@ -137,20 +145,22 @@ class Worker(MPIClass):
         status = MPI.Status()
         while True:
 
+            # signal manager we are ready for the next task.
+            req = self.comm.isend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
+
             # send our dir list to manager (if any)
             self.send_my_dirlist()
 
-            # signal manager we are ready for the next task.
-            self.comm.ssend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
-
             # receive instructions from Manager
             next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
+            req.wait() # <-- probably redundant, the recv above completing should guarantee the isend has completed
 
             if status.Get_tag() == self.tags['terminate']: break
 
             if next_dir:
                 assert (status.Get_tag() == self.tags['execute'])
                 self.process_directory(next_dir)
+
 
         #print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
         #                                                                   format_number(self.maxnumdirs)))
