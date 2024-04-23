@@ -116,15 +116,14 @@ class Manager(MPIClass):
             if self.comm.iprobe(source=probe_source, tag=self.tags['ready'], status=status):
                 ready_rank = status.Get_source()
                 self.any_dirs[ready_rank] = False
-                counts = self.comm.recv(source=ready_rank, tag=self.tags['ready']); self.nrecvs += 1
-                self.progress_sizes[ready_rank] = counts.pop()
-                self.progress_counts[ready_rank] = counts.pop()
-                next_dir = None
                 if self.dirs:
+                    counts = self.comm.recv(source=ready_rank, tag=self.tags['ready']); self.nrecvs += 1
+                    self.progress_sizes[ready_rank] = counts.pop()
+                    self.progress_counts[ready_rank] = counts.pop()
                     next_dir = self.dirs.pop()
                     self.any_dirs[ready_rank] = True
                     #print('Running dir {} on rank {}'.format(next_dir, ready_rank))
-                self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute']); self.nsends += 1
+                    self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute']); self.nsends += 1
 
 
         # cleanup loop, send 'terminate' tag to each slave rank in

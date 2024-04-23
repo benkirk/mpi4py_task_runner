@@ -146,14 +146,16 @@ class Worker(MPIClass):
         while True:
 
             # signal manager we are ready for the next task.
-            req = self.comm.isend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
+            sreq = self.comm.isend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
+
+            # receive instructions from Manager
+            rreq = self.comm.irecv(source=0, tag=MPI.ANY_TAG)
 
             # send our dir list to manager (if any)
             self.send_my_dirlist()
 
-            # receive instructions from Manager
-            next_dir = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
-            req.wait() # <-- probably redundant, the recv above completing should guarantee the isend has completed
+            next_dir = rreq.wait(status=status)
+            sreq.wait() # <-- probably redundant, the recv above completing should guarantee the isend has completed
 
             if status.Get_tag() == self.tags['terminate']: break
 
