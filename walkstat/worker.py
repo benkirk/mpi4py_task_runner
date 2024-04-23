@@ -78,6 +78,9 @@ class Worker(MPIClass):
                     elif stat.S_ISDIR(fmode):  assert False # huh??
                     #self.process_file(pathname, statinfo)
 
+                    # track the size & count of this file in our top heap
+                    self.top_nbytes_files.add((statinfo.st_size, pathname))
+
             # track the size & count of this directory in our top heaps
             self.top_nitems_dirs.add((thisdir_nitems, dirname))
             self.top_nbytes_dirs.add((thisdir_nbytes, dirname))

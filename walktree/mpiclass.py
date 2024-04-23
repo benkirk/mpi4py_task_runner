@@ -3,7 +3,7 @@
 from mpi4py import MPI
 import os
 import sys
-import pwd
+import pwd, grp
 import tempfile
 import shutil
 import platform
@@ -15,6 +15,9 @@ try:
     have_humanfriendly = True
 except ImportError:
     pass
+
+
+HEAP_SIZE = 500
 
 ################################################################################
 def flatten(matrix):
@@ -67,8 +70,9 @@ class MPIClass:
         self.gid_nitems = defaultdict(int)
         self.gid_nbytes = defaultdict(int)
 
-        self.top_nitems_dirs = MaxHeap(500)
-        self.top_nbytes_dirs = MaxHeap(500)
+        self.top_nitems_dirs  = MaxHeap(HEAP_SIZE)
+        self.top_nbytes_dirs  = MaxHeap(HEAP_SIZE)
+        self.top_nbytes_files = MaxHeap(HEAP_SIZE)
 
         return
 
@@ -123,6 +127,10 @@ class MPIClass:
             for part in parts:
                 for k,v in part:
                     result[k] += v
+
+            # sort from largest-val-to-smallest
+            # https://stackoverflow.com/questions/613183/how-do-i-sort-a-dictionary-by-value
+            result = dict(sorted(result.items(), reverse=True, key=lambda item: item[1]))
         return result
 
 
@@ -135,8 +143,9 @@ class MPIClass:
         sep="-"*80
 
         # gather heaps
-        self.top_nitems_dirs.reset( flatten( self.comm.gather(self.top_nitems_dirs.get_list()) ) )
-        self.top_nbytes_dirs.reset( flatten( self.comm.gather(self.top_nbytes_dirs.get_list()) ) )
+        self.top_nitems_dirs.reset(  flatten( self.comm.gather(self.top_nitems_dirs.get_list())  ) )
+        self.top_nbytes_dirs.reset(  flatten( self.comm.gather(self.top_nbytes_dirs.get_list())  ) )
+        self.top_nbytes_files.reset( flatten( self.comm.gather(self.top_nbytes_files.get_list()) ) )
 
         self.st_modes   = self.gather_and_sum_dict(self.st_modes)
         self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
@@ -145,15 +154,7 @@ class MPIClass:
         self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
         sys.stdout.flush()
 
-        if self.i_am_root:
-            print(sep)
-            for k,v in self.uid_nbytes.items():
-                try:
-                    username = pwd.getpwuid(k)[0]
-                except KeyError:
-                    username = '{}*'.format(k)
-                print('{:>12} : {}'.format(username,format_size(v)))
-
+        #--------------------------------------------------
         if verbose:
             for p in range(0,self.nranks):
                 self.comm.Barrier()
@@ -169,26 +170,60 @@ class MPIClass:
                         print("   {:5s} : {}".format('size',format_size(self.total_size)))
 
         if self.i_am_root:
-            print(sep)
-            print("Totals from all ranks:")
+            # summarize uid/gid results
+            print(sep + '\nUser Sizes:\n' + sep)
+            for k,v in self.uid_nbytes.items():
+                try:
+                    username = pwd.getpwuid(k).pw_name
+                except KeyError:
+                    username = '{}*'.format(k)
+                print('{:>12} : {}'.format(username,format_size(v)))
+            print(sep + '\nUser Counts:\n' + sep)
+            for k,v in self.uid_nitems.items():
+                try:
+                    username = pwd.getpwuid(k).pw_name
+                except KeyError:
+                    username = '{}*'.format(k)
+                print('{:>12} : {}'.format(username,format_number(v)))
+            print(sep + '\nGroup Sizes:\n' + sep)
+            for k,v in self.gid_nbytes.items():
+                try:
+                    groupname = grp.getgrgid(k).gr_name
+                except KeyError:
+                    groupname = '{}*'.format(k)
+                print('{:>12} : {}'.format(groupname,format_size(v)))
+            print(sep + '\nGroup Counts:\n' + sep)
+            for k,v in self.gid_nitems.items():
+                try:
+                    groupname = grp.getgrgid(k).gr_name
+                except KeyError:
+                    groupname = '{}*'.format(k)
+                print('{:>12} : {}'.format(groupname,format_number(v)))
+
+
+        sys.stdout.flush()
+        # summarize top files & directories
+        nfiles_tot = self.comm.reduce(self.num_files,  MPI.SUM)
+        ndirs_tot  = self.comm.reduce(self.num_dirs,   MPI.SUM)
+        size_tot   = self.comm.reduce(self.total_size, MPI.SUM)
+
+        if self.i_am_root:
+            # summarize stat types
+            print('\n'+sep)
+            print("Types (from all ranks):")
             for k,v in self.st_modes.items():
                 print("   {:5s} : {:,}".format(k, v))
 
-        sys.stdout.flush()
-        nfiles_tot = self.comm.reduce(self.num_files, MPI.SUM)
-        ndirs_tot  = self.comm.reduce(self.num_dirs,  MPI.SUM)
-        fsize_tot  = self.comm.reduce(self.total_size, MPI.SUM)
+            print("Total Count: {:,} objects = {:,} files + {:,} dirs".format(nfiles_tot+ndirs_tot,
+                                                                              nfiles_tot,
+                                                                              ndirs_tot))
+            print("Total Size: {}".format(format_size(size_tot)))
 
-        if self.i_am_root:
-            print("{}\nTotal found: {:,} objects = {:,} files + {:,} dirs".format(sep,
-                                                                                  nfiles_tot+ndirs_tot,
-                                                                                  nfiles_tot,
-                                                                                  ndirs_tot))
-            print("Total File Size: {}".format(format_size(fsize_tot)))
-
-            print(sep)
+            print(sep + '\nTop Dirs (file count):\n' + sep)
             for item in self.top_nitems_dirs.top(50): print('{:>10} {}'.format(format_number(item[0]), item[1]))
-            print(sep)
+            print(sep + '\nTop Dirs (size):\n' + sep)
             for item in self.top_nbytes_dirs.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
+            print(sep + '\nTop Files (size):\n' + sep)
+            for item in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
 
         return
