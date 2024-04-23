@@ -42,9 +42,9 @@ class Worker(MPIClass):
         try:
             thisdir_nitems = 0
             thisdir_nbytes = 0
-            thisdir_max_mtime = 0
-            thisdir_max_ctime = 0
-            thisdir_max_atime = 0
+            thisdir_max_mtime = -1
+            thisdir_max_ctime = -1
+            thisdir_max_atime = -1
 
             dirdepth = dirname.count(os.path.sep)
 
@@ -92,6 +92,10 @@ class Worker(MPIClass):
             # track the size & count of this directory in our top heaps
             self.top_nitems_dirs.add((thisdir_nitems, dirname))
             self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
+
+            if thisdir_max_mtime > 0: self.oldest_mtime_dirs.add((-thisdir_max_mtime, dirname)) # (-) to turn maxheap into a minheap
+            if thisdir_max_atime > 0: self.oldest_atime_dirs.add((-thisdir_max_atime, dirname)) # (-) to turn maxheap into a minheap
+
 
         except Exception as error:
             print('[{:3d}] {}'.format(self.rank, error), file=sys.stderr)

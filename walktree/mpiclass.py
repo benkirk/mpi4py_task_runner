@@ -9,6 +9,7 @@ import shutil
 import platform
 from collections import defaultdict
 from maxheap import MaxHeap
+from datetime import datetime, timezone
 have_humanfriendly = False
 try:
     import humanfriendly
@@ -70,9 +71,11 @@ class MPIClass:
         self.gid_nitems = defaultdict(int)
         self.gid_nbytes = defaultdict(int)
 
-        self.top_nitems_dirs  = MaxHeap(HEAP_SIZE)
-        self.top_nbytes_dirs  = MaxHeap(HEAP_SIZE)
-        self.top_nbytes_files = MaxHeap(HEAP_SIZE)
+        self.top_nitems_dirs   = MaxHeap(HEAP_SIZE)
+        self.top_nbytes_dirs   = MaxHeap(HEAP_SIZE)
+        self.top_nbytes_files  = MaxHeap(HEAP_SIZE)
+        self.oldest_mtime_dirs = MaxHeap(HEAP_SIZE)
+        self.oldest_atime_dirs = MaxHeap(HEAP_SIZE)
 
         return
 
@@ -143,9 +146,11 @@ class MPIClass:
         sep='-'*80
 
         # gather heaps
-        self.top_nitems_dirs.reset(  flatten( self.comm.gather(self.top_nitems_dirs.get_list())  ) )
-        self.top_nbytes_dirs.reset(  flatten( self.comm.gather(self.top_nbytes_dirs.get_list())  ) )
-        self.top_nbytes_files.reset( flatten( self.comm.gather(self.top_nbytes_files.get_list()) ) )
+        self.top_nitems_dirs.reset   (flatten( self.comm.gather(self.top_nitems_dirs.get_list())))
+        self.top_nbytes_dirs.reset   (flatten( self.comm.gather(self.top_nbytes_dirs.get_list())))
+        self.top_nbytes_files.reset  (flatten( self.comm.gather(self.top_nbytes_files.get_list())))
+        self.oldest_mtime_dirs.reset (flatten( self.comm.gather(self.oldest_mtime_dirs.get_list())))
+        self.oldest_atime_dirs.reset (flatten( self.comm.gather(self.oldest_atime_dirs.get_list())))
 
         self.st_modes   = self.gather_and_sum_dict(self.st_modes)
         self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
@@ -215,5 +220,9 @@ class MPIClass:
             for item in self.top_nbytes_dirs.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
             print(sep + '\nTop Files (size):\n' + sep)
             for item in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
+            print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
+            for item in self.oldest_mtime_dirs.top(50): print('{} {}'.format(datetime.fromtimestamp(-item[0]), item[1])) # (-) to turn maxheap into a minheap
+            print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
+            for item in self.oldest_atime_dirs.top(50): print('{} {}'.format(datetime.fromtimestamp(-item[0]), item[1])) # (-) to turn maxheap into a minheap
 
         return
