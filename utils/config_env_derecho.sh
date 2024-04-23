@@ -1,7 +1,8 @@
 #!/bin/bash
 
-module purge
-module load gcc cray-mpich conda
+#module purge
+#module load gcc cray-mpich conda
+module load conda linaro-forgr
 module list
 
 export MPICC=$(which mpicc)
