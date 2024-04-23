@@ -7,7 +7,7 @@ import time
 import sys
 from datetime import datetime
 from random import randint
-
+#from memory_profiler import profile
 
 ################################################################################
 class Manager(MPIClass):
@@ -77,6 +77,7 @@ class Manager(MPIClass):
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #@profile
     def run(self):
 
         self.comm.Barrier()

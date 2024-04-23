@@ -9,9 +9,10 @@ dependencies:
   - humanfriendly
   - make
   - numpy
+  - memory_profiler
   - pandas
   - pyarrow
-  - python=3.10
+  - python=3.12
   - yaml
   - pip
   - pip:
