@@ -215,14 +215,14 @@ class MPIClass:
 
             # summarize top files & directories
             print(sep + '\nTop Dirs (file count):\n' + sep)
-            for item in self.top_nitems_dirs.top(50): print('{:>10} {}'.format(format_number(item[0]), item[1]))
+            for item in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}'.format(format_number(item[0]), format_size(item[1]), item[2]))
             print(sep + '\nTop Dirs (size):\n' + sep)
-            for item in self.top_nbytes_dirs.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
+            for item in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}'.format(format_size(item[0]), format_number(item[1]), item[2]))
             print(sep + '\nTop Files (size):\n' + sep)
             for item in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
             print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
-            for item in self.oldest_mtime_dirs.top(50): print('{} {}'.format(datetime.fromtimestamp(-item[0]), item[1])) # (-) to turn maxheap into a minheap
+            for item in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}'.format(datetime.fromtimestamp(-item[0]), format_size(item[1]), format_number(item[2]), item[3])) # (-) to turn maxheap into a minheap
             print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
-            for item in self.oldest_atime_dirs.top(50): print('{} {}'.format(datetime.fromtimestamp(-item[0]), item[1])) # (-) to turn maxheap into a minheap
+            for item in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}'.format(datetime.fromtimestamp(-item[0]), format_size(item[1]), format_number(item[2]), item[3])) # (-) to turn maxheap into a minheap
 
         return

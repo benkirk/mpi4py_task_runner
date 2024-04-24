@@ -90,11 +90,11 @@ class Worker(MPIClass):
                     self.top_nbytes_files.add((statinfo.st_size, pathname))
 
             # track the size & count of this directory in our top heaps
-            self.top_nitems_dirs.add((thisdir_nitems, dirname))
-            self.top_nbytes_dirs.add((thisdir_nbytes, dirname))
+            self.top_nitems_dirs.add((thisdir_nitems, thisdir_nbytes, dirname))
+            self.top_nbytes_dirs.add((thisdir_nbytes, thisdir_nitems, dirname))
 
-            if thisdir_max_mtime > 0: self.oldest_mtime_dirs.add((-thisdir_max_mtime, dirname)) # (-) to turn maxheap into a minheap
-            if thisdir_max_atime > 0: self.oldest_atime_dirs.add((-thisdir_max_atime, dirname)) # (-) to turn maxheap into a minheap
+            if thisdir_max_mtime > 0: self.oldest_mtime_dirs.add((-thisdir_max_mtime, thisdir_nbytes, thisdir_nitems, dirname)) # (-) to turn maxheap into a minheap
+            if thisdir_max_atime > 0: self.oldest_atime_dirs.add((-thisdir_max_atime, thisdir_nbytes, thisdir_nitems, dirname)) # (-) to turn maxheap into a minheap
 
 
         except Exception as error:
