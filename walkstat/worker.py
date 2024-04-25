@@ -149,24 +149,22 @@ class Worker(MPIClass):
         status = MPI.Status()
         while True:
 
-            # signal manager we are ready for the next task.
-            sreq = self.comm.isend([self.num_items, self.total_size], dest=0, tag=self.tags['ready'])
-
-            # receive instructions from Manager
-            rreq = self.comm.irecv(source=0, tag=MPI.ANY_TAG)
-
             # send our dir list to manager (if any)
             self.send_my_dirlist()
 
-            next_dir = rreq.wait(status=status)
-            sreq.wait() # <-- probably redundant, the recv above completing should guarantee the isend has completed
+            # # receive instructions from Manager
+            next_dir = self.comm.sendrecv([self.num_items, self.total_size],
+                                          dest=0,  sendtag=self.tags['ready'],
+                                          source=0, recvtag=MPI.ANY_TAG,
+                                          status=status)
 
-            if status.Get_tag() == self.tags['terminate']: break
+            if status.Get_tag() == self.tags['terminate']:
+                assert (next_dir == None)
+                break
 
             if next_dir:
                 assert (status.Get_tag() == self.tags['execute'])
                 self.process_directory(next_dir)
-
 
         #print('[{:3d}] *** Finished, maximum # of dirs at once: {}'.format(self.rank,
         #                                                                   format_number(self.maxnumdirs)))

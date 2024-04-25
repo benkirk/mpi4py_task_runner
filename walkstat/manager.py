@@ -23,8 +23,7 @@ class Manager(MPIClass):
         self.num_dirs = 0
         self.file_size = 0
         self.niter = 10*self.comm.Get_size()
-        self.any_dirs = [False for p in range(0,self.nranks)]
-        self.any_dirs[0] = True
+        self.any_dirs = [True for p in range(0,self.nranks)] # <--- assume all workers are busy until we hear otherwise
         self.progress_sizes = [0 for p in range(0,self.nranks)]
         self.progress_counts = [0 for p in range(0,self.nranks)]
         self.progress_time = self.start_time = MPI.Wtime()
@@ -35,6 +34,8 @@ class Manager(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def finished(self):
         self.iteration += 1
+
+        self.any_dirs[0] = True if self.dirs else False
 
         if any(self.any_dirs): return False
 
@@ -86,45 +87,46 @@ class Manager(MPIClass):
         # execution loop, until we determine we are finished.
         while not self.finished():
 
-            self.any_dirs[0] = True if self.dirs else False
-
-            #print(self.any_dirs)
-
             self.report_progress()
 
             # check for incoming directories
-            if self.comm.iprobe(source=MPI.ANY_SOURCE, tag=self.tags['dir_reply'], status=status):
+            if self.comm.iprobe(source=MPI.ANY_SOURCE,
+                                tag=self.tags['dir_reply'],
+                                status=status):
+
                 ready_rank = status.Get_source()
-                self.any_dirs[0]          = True
                 self.any_dirs[ready_rank] = False
                 more_dirs = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply']); self.nrecvs += 1
-                assert more_dirs
+                assert (len(more_dirs) >= 2)
                 # workers append some count info to the send buffer, so retrieve that
                 self.progress_sizes[ready_rank] = more_dirs.pop()
                 self.progress_counts[ready_rank] = more_dirs.pop()
                 self.dirs.extend(more_dirs)
                 self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
-                #print(' *** master received a dir_reply from [{:3d}] {} ***'.format(ready_rank, more_dirs))
 
             # check for incoming ready status
-            # case 1: we have data, we can probe any source since we're about to send them work.
-            if self.dirs: probe_source = MPI.ANY_SOURCE
+            # case 1: we have data, we can probe ANY_SOURCE since we're about to send them work.
             # case 2: we have no data...  ANY_SOURCE is too flexibile - we can get in a spamming loop
             # with just a handful of ranks, not ever realizing all the others are done too. So, to
             # handle this case we want to make sure we check each rank, not just the ones at the top
-            # of the probe queue (yeah... this was observed, especially on Derecho).
-            else: probe_source = randint(1,self.nranks-1)
-            if self.comm.iprobe(source=probe_source, tag=self.tags['ready'], status=status):
-                ready_rank = status.Get_source()
-                self.any_dirs[ready_rank] = False
-                if self.dirs:
-                    counts = self.comm.recv(source=ready_rank, tag=self.tags['ready']); self.nrecvs += 1
-                    self.progress_sizes[ready_rank] = counts.pop()
-                    self.progress_counts[ready_rank] = counts.pop()
-                    next_dir = self.dirs.pop()
-                    self.any_dirs[ready_rank] = True
-                    #print('Running dir {} on rank {}'.format(next_dir, ready_rank))
-                    self.comm.send(next_dir, dest=ready_rank, tag=self.tags['execute']); self.nsends += 1
+            # of the probe queue (yeah... this was observed, especially on Derecho).  Since we require
+            # (eventually) hearing a 'ready' from all workers to break this loop when we have no data left to
+            # send, we need to be sure to hear from them all.
+            if self.comm.iprobe(source=MPI.ANY_SOURCE if self.dirs else randint(1,self.nranks-1),
+                                tag=self.tags['ready'],
+                                status=status):
+
+                 ready_rank = status.Get_source()
+                 self.any_dirs[ready_rank] = False
+                 if self.dirs:
+                     next_dir = self.dirs.pop()
+                     counts = self.comm.sendrecv(next_dir,
+                                                 dest=ready_rank,   sendtag=self.tags['execute'],
+                                                 source=ready_rank, recvtag=self.tags['ready']); self.nrecvs +=1; self.nsends += 1
+                     self.any_dirs[ready_rank] = True
+                     assert (len(counts) == 2)
+                     self.progress_sizes[ready_rank] = counts.pop()
+                     self.progress_counts[ready_rank] = counts.pop()
 
 
         # cleanup loop, send 'terminate' tag to each slave rank in
