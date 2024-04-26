@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-from mpiclass import MPIClass, format_number
+from mpiclass import MPIClass, DirEntry, FileEntry, format_number
 import os, sys, stat
 import shutil
 #import threading
@@ -93,16 +93,23 @@ class Worker(MPIClass):
                     thisdir_max_ctime = max(thisdir_max_ctime, statinfo.st_ctime)
                     thisdir_max_atime = max(thisdir_max_atime, statinfo.st_atime)
 
+                    fe = FileEntry(pathname, statinfo.st_size,
+                                   statinfo.st_mtime, statinfo.st_ctime, statinfo.st_atime)
+
                     # track the size & count of this file in our top heap
-                    self.top_nbytes_files.add((statinfo.st_size, pathname))
+                    self.top_nbytes_files.add((statinfo.st_size, fe))
+
 
             # track the size & count of this directory in our top heaps
-            self.top_nitems_dirs.add((thisdir_nitems, thisdir_nbytes, dirname))
-            self.top_nbytes_dirs.add((thisdir_nbytes, thisdir_nitems, dirname))
+            de = DirEntry(dirname, thisdir_nbytes, thisdir_nitems,
+                          thisdir_max_mtime, thisdir_max_ctime, thisdir_max_atime)
+
+            self.top_nitems_dirs.add((thisdir_nitems, de))
+            self.top_nbytes_dirs.add((thisdir_nbytes, de))
 
             if thisdir_nitems >= self.options.threshold_count and thisdir_nbytes >= self.options.threshold_size:
-                if thisdir_max_mtime > 0: self.oldest_mtime_dirs.add((-thisdir_max_mtime, thisdir_nbytes, thisdir_nitems, dirname)) # (-) to turn maxheap into a minheap
-                if thisdir_max_atime > 0: self.oldest_atime_dirs.add((-thisdir_max_atime, thisdir_nbytes, thisdir_nitems, dirname)) # (-) to turn maxheap into a minheap
+                if thisdir_max_mtime > 0: self.oldest_mtime_dirs.add((-thisdir_max_mtime, de)) # (-) to turn maxheap into a minheap
+                if thisdir_max_atime > 0: self.oldest_atime_dirs.add((-thisdir_max_atime, de)) # (-) to turn maxheap into a minheap
 
 
         except Exception as error:

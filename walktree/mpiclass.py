@@ -8,6 +8,7 @@ import tempfile
 import shutil
 import platform
 from collections import defaultdict
+from typing import NamedTuple
 from maxheap import MaxHeap
 from datetime import datetime, timezone
 from parse_args import parse_options
@@ -35,6 +36,26 @@ def format_number(val):
 def format_timespan(val):
     if have_humanfriendly: return humanfriendly.format_timespan(val)
     return '{:.1f} seconds'.format(val)
+
+
+
+################################################################################
+class FileEntry(NamedTuple):
+    path   : str
+    nbytes : int
+    mtime  : float
+    ctime  : float
+    atime  : float
+
+class DirEntry(NamedTuple):
+    path      : str
+    nbytes    : int
+    nitems    : int
+    max_mtime : float
+    max_ctime : float
+    max_atime : float
+
+
 
 ################################################################################
 class MPIClass:
@@ -213,16 +234,15 @@ class MPIClass:
 
             # summarize top files & directories
             print(sep + '\nTop Dirs (file count):\n' + sep)
-            for item in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}'.format(format_number(item[0]), format_size(item[1]), item[2]))
+            for idx,de in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}'.format(format_number(de.nitems), format_size(de.nbytes), de.path))
             print(sep + '\nTop Dirs (size):\n' + sep)
-            for item in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}'.format(format_size(item[0]), format_number(item[1]), item[2]))
+            for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
             print(sep + '\nTop Files (size):\n' + sep)
-            for item in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(item[0]), item[1]))
+            for idx,fe in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(fe.nbytes), fe.path))
             print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
-            for item in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}'.format(datetime.fromtimestamp(-item[0]).strftime('%Y-%m-%d %H:%M:%S'), # (-) to turn maxheap into a minheap
-                                                                                           format_size(item[1]), format_number(item[2]), item[3]))
+            for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                                                                                             format_size(de.nbytes), format_number(de.nitems), de.path))
             print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
-            for item in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}'.format(datetime.fromtimestamp(-item[0]).strftime('%Y-%m-%d %H:%M:%S'), # (-) to turn maxheap into a minheap
-                                                                                            format_size(item[1]), format_number(item[2]), item[3]))
-
+            for idx,de in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}'.format(datetime.fromtimestamp(de.max_atime).strftime('%Y-%m-%d %H:%M:%S'),
+                                                                                            format_size(de.nbytes), format_number(de.nitems), de.path))
         return
