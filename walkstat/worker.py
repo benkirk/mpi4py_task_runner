@@ -107,7 +107,7 @@ class Worker(MPIClass):
             self.top_nitems_dirs.add((thisdir_nitems, de))
             self.top_nbytes_dirs.add((thisdir_nbytes, de))
 
-            if thisdir_nitems >= self.options.threshold_count and thisdir_nbytes >= self.options.threshold_size:
+            if thisdir_nitems >= self.options.threshold_count or thisdir_nbytes >= self.options.threshold_size:
                 if thisdir_max_mtime > 0: self.oldest_mtime_dirs.add((-thisdir_max_mtime, de)) # (-) to turn maxheap into a minheap
                 if thisdir_max_atime > 0: self.oldest_atime_dirs.add((-thisdir_max_atime, de)) # (-) to turn maxheap into a minheap
 

@@ -97,7 +97,7 @@ class Manager(MPIClass):
 
                 ready_rank = status.Get_source()
                 self.any_dirs[ready_rank] = False
-                more_dirs = self.comm.recv(source=ready_rank, tag=self.tags['dir_reply']); self.nrecvs += 1
+                more_dirs = self.comm.recv(source=ready_rank, tag=status.Get_tag()); self.nrecvs += 1
                 assert (len(more_dirs) >= 2)
                 # workers append some count info to the send buffer, so retrieve that
                 self.progress_sizes[ready_rank] = more_dirs.pop()
@@ -111,7 +111,7 @@ class Manager(MPIClass):
                                 status=status):
 
                 reporting_rank = status.Get_source()
-                counts = self.comm.recv(source=reporting_rank, tag=self.tags['progress']); self.nrecvs += 1
+                counts = self.comm.recv(source=reporting_rank, tag=status.Get_tag()); self.nrecvs += 1
                 assert (len(counts) == 2)
                 # workers append some count info to the send buffer, so retrieve that
                 self.progress_sizes[reporting_rank] = counts.pop()
@@ -124,7 +124,7 @@ class Manager(MPIClass):
             # handle this case we want to make sure we check each rank, not just the ones at the top
             # of the probe queue (yeah... this was observed, especially on Derecho).  Since we require
             # (eventually) hearing a 'ready' from all workers to break this loop when we have no data left to
-            # send, we need to be sure to hear from them all.
+            # send, we need to be sure to ultimately hear from them all.
             if self.comm.iprobe(source=MPI.ANY_SOURCE if self.dirs else randint(1,self.nranks-1),
                                 tag=self.tags['ready'],
                                 status=status):
@@ -135,7 +135,7 @@ class Manager(MPIClass):
                      next_dir = self.dirs.pop()
                      counts = self.comm.sendrecv(next_dir,
                                                  dest=ready_rank,   sendtag=self.tags['execute'],
-                                                 source=ready_rank, recvtag=self.tags['ready']); self.nrecvs +=1; self.nsends += 1
+                                                 source=ready_rank, recvtag=status.Get_tag()); self.nrecvs +=1; self.nsends += 1
                      self.any_dirs[ready_rank] = True
                      assert (len(counts) == 2)
                      self.progress_sizes[ready_rank] = counts.pop()
@@ -148,17 +148,15 @@ class Manager(MPIClass):
                                                                            format_number(self.nrecvs)))
         print('  --> Maximum # of dirs at once on manager: {}'.format(format_number(self.maxnumdirs)))
         print('  --> Finished dispatch, Terminating ranks')
-        requests = []
         for s in range(1,self.nranks):
             counts = self.comm.recv(source=MPI.ANY_SOURCE, tag=self.tags['ready'], status=status); self.nrecvs += 1
             ready_rank = status.Get_source()
             self.progress_sizes[ready_rank] = counts.pop()
             self.progress_counts[ready_rank] = counts.pop()
             # send terminate tag, but no need to wait
-            requests.append(self.comm.isend(None, dest=ready_rank, tag=self.tags['terminate'])); self.nsends += 1
+            self.comm.send(None, dest=ready_rank, tag=self.tags['terminate']); self.nsends += 1
 
-        # OK, messages sent, wait for all to complete
-        MPI.Request.waitall(requests)
+        # OK, messages sent, report final progress
         self.report_progress(forceprint=True)
 
         return

@@ -29,8 +29,8 @@ def parse_options():
     parser.add_argument('-e', '--errors', default=None, help='Error log file name (default: stderr)', type=str, required=False)
     parser.add_argument('-v', '--verbose', action='store_true', help='Print detailed information')
     parser.add_argument('--heap-size', default=500, type=int, required=False, help='queue depth for tracking large files / directories')
-    parser.add_argument('--threshold-size', default='0', type=str, required=False, help='Only consider directories larger than this threshold when tracking mtimes/atimes (string')
-    parser.add_argument('--threshold-count', default=0, type=int, required=False, help='Only consider directories larger than this threshold when tracking mtimes/atimes (count)')
+    parser.add_argument('--threshold-size', default='10MB', type=str, required=False, help='Only consider directories larger than this threshold when tracking mtimes/atimes (string')
+    parser.add_argument('--threshold-count', default=10000, type=int, required=False, help='Only consider directories larger than this threshold when tracking mtimes/atimes (count)')
 
     args = parser.parse_args()
 

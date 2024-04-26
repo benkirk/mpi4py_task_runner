@@ -25,14 +25,12 @@ class MaxHeap():
 
     def reset(self, new_h, top_n=None):
         if new_h:
+            self.maxsize = len(new_h)
+            self.h = new_h
+            heapify(self.h)
             if top_n:
                 self.maxsize = top_n
-            else:
-                self.maxsize = len(new_h)
-                self.h = new_h
-                heapify(self.h)
-                while len(self.h) > self.maxsize:
-                    heappop(self.h)
+                while len(self.h) > self.maxsize: heappop(self.h)
         else:
             self.h = []
             self.maxsize = None

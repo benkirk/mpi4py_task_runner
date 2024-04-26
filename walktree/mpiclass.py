@@ -234,15 +234,15 @@ class MPIClass:
 
             # summarize top files & directories
             print(sep + '\nTop Dirs (file count):\n' + sep)
-            for idx,de in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}'.format(format_number(de.nitems), format_size(de.nbytes), de.path))
+            for idx,de in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_number(de.nitems), format_size(de.nbytes), de.path))
             print(sep + '\nTop Dirs (size):\n' + sep)
-            for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
+            for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
             print(sep + '\nTop Files (size):\n' + sep)
             for idx,fe in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(fe.nbytes), fe.path))
             print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
-            for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-                                                                                             format_size(de.nbytes), format_number(de.nitems), de.path))
+            for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                                                                                              format_size(de.nbytes), format_number(de.nitems), de.path))
             print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
-            for idx,de in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}'.format(datetime.fromtimestamp(de.max_atime).strftime('%Y-%m-%d %H:%M:%S'),
-                                                                                            format_size(de.nbytes), format_number(de.nitems), de.path))
+            for idx,de in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_atime).strftime('%Y-%m-%d %H:%M:%S'),
+                                                                                               format_size(de.nbytes), format_number(de.nitems), de.path))
         return
