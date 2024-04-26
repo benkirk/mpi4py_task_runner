@@ -46,7 +46,7 @@ class MPIClass:
             'work_deny'     : 22,
             'dir_request'   : 30,
             'dir_reply'     : 31,
-            'counts'        : 40,
+            'progress'      : 40,
             'terminate'     : 1000 }
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

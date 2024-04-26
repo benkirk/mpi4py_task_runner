@@ -105,6 +105,18 @@ class Manager(MPIClass):
                 self.dirs.extend(more_dirs)
                 self.maxnumdirs = max(self.maxnumdirs, len(self.dirs))
 
+            # check for incoming status reports
+            if self.comm.iprobe(source=MPI.ANY_SOURCE,
+                                tag=self.tags['progress'],
+                                status=status):
+
+                reporting_rank = status.Get_source()
+                counts = self.comm.recv(source=reporting_rank, tag=self.tags['progress']); self.nrecvs += 1
+                assert (len(counts) == 2)
+                # workers append some count info to the send buffer, so retrieve that
+                self.progress_sizes[reporting_rank] = counts.pop()
+                self.progress_counts[reporting_rank] = counts.pop()
+
             # check for incoming ready status
             # case 1: we have data, we can probe ANY_SOURCE since we're about to send them work.
             # case 2: we have no data...  ANY_SOURCE is too flexibile - we can get in a spamming loop

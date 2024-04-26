@@ -8,6 +8,7 @@ import shutil
 #import queue
 
 MAXDIRS_BEFORE_SEND = 200
+PROGRESS_INCREMENT = 20000
 
 ################################################################################
 class Worker(MPIClass):
@@ -63,6 +64,12 @@ class Worker(MPIClass):
                 self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
                 self.gid_nitems[statinfo.st_gid] += 1
                 self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
+
+                # send a progress update periodically
+                # (in production we have many directories with 1M+ files, this ensures some progress is
+                # detected and reported by Manager even for huge dirs)
+                if 0 == thisdir_nitems%PROGRESS_INCREMENT:
+                    self.report_progress()
 
                 # decode file type
                 fmode = statinfo.st_mode
@@ -140,6 +147,13 @@ class Worker(MPIClass):
             self.dirs.append(self.total_size)
             self.comm.send(self.dirs, dest=0, tag=self.tags['dir_reply'])
             self.dirs = []
+        return
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def report_progress(self):
+        self.comm.send([self.num_items, self.total_size], dest=0, tag=self.tags['progress'])
         return
 
 
