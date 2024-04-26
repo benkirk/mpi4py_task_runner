@@ -3,57 +3,10 @@
 from mpi4py import MPI
 import os
 import sys
-import pwd, grp
 import tempfile
 import shutil
 import platform
 from collections import defaultdict
-from typing import NamedTuple
-from maxheap import MaxHeap
-from datetime import datetime, timezone
-from parse_args import parse_options
-have_humanfriendly = False
-try:
-    import humanfriendly
-    have_humanfriendly = True
-except ImportError:
-    pass
-
-
-################################################################################
-def flatten(matrix):
-    if matrix: return [item for row in matrix for item in row]
-    return None
-
-def format_size(val):
-    if have_humanfriendly: return humanfriendly.format_size(val)
-    return '{:.5e} bytes'.format(val)
-
-def format_number(val):
-    if have_humanfriendly: return humanfriendly.format_number(val)
-    return '{:,}'.format(val)
-
-def format_timespan(val):
-    if have_humanfriendly: return humanfriendly.format_timespan(val)
-    return '{:.1f} seconds'.format(val)
-
-
-
-################################################################################
-class FileEntry(NamedTuple):
-    path   : str
-    nbytes : int
-    mtime  : float
-    ctime  : float
-    atime  : float
-
-class DirEntry(NamedTuple):
-    path      : str
-    nbytes    : int
-    nitems    : int
-    max_mtime : float
-    max_ctime : float
-    max_atime : float
 
 
 
@@ -67,7 +20,6 @@ class MPIClass:
             'work_deny'     : 22,
             'dir_request'   : 30,
             'dir_reply'     : 31,
-            'progress'      : 40,
             'terminate'     : 1000 }
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -78,23 +30,12 @@ class MPIClass:
         self.nranks = self.comm.Get_size()
         self.i_am_root = False if self.rank else True
         self.options = self.comm.bcast(options)
+
         self.dirs = None
-        self.maxnumdirs = 0
         self.num_files = 0
         self.num_dirs = 0
-        self.num_items = 0
-        self.total_size = 0
+        self.file_size = 0
         self.st_modes = defaultdict(int)
-        self.uid_nitems = defaultdict(int)
-        self.uid_nbytes = defaultdict(int)
-        self.gid_nitems = defaultdict(int)
-        self.gid_nbytes = defaultdict(int)
-
-        self.top_nitems_dirs   = MaxHeap(self.options.heap_size)
-        self.top_nbytes_dirs   = MaxHeap(self.options.heap_size)
-        self.top_nbytes_files  = MaxHeap(self.options.heap_size)
-        self.oldest_mtime_dirs = MaxHeap(self.options.heap_size)
-        self.oldest_atime_dirs = MaxHeap(self.options.heap_size)
 
         return
 
@@ -103,6 +44,7 @@ class MPIClass:
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __del__(self):
         self.cleanup()
+        self.summary()
         return
 
 
@@ -122,7 +64,7 @@ class MPIClass:
 
         # # local_topdir from slurm is job specific, let's create a subdirectory
         # # for this spefific MPI rank
-        # self.local_rankdir = tempfile.mkdtemp(prefix='rank{}_'.format(self.rank),
+        # self.local_rankdir = tempfile.mkdtemp(prefix="rank{}_".format(self.rank),
         #                                       dir=local_topdir)
 
         return
@@ -142,107 +84,61 @@ class MPIClass:
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def gather_and_sum_dict(self, my_part):
-        result = defaultdict(int)
-        parts = self.comm.gather(list(my_part.items()))
-        if parts:
-            for part in parts:
-                for k,v in part:
-                    result[k] += v
-
-            # sort from largest-val-to-smallest
-            # https://stackoverflow.com/questions/613183/how-do-i-sort-a-dictionary-by-value
-            result = dict(sorted(result.items(), reverse=True, key=lambda item: item[1]))
-        return result
-
-
-
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def summary(self, verbose=False):
+    def summary(self):
 
         self.comm.Barrier()
+        stat_keys = set(self.st_modes.keys())
 
-        sep='-'*80
-
-        # gather heaps
-        self.top_nitems_dirs.reset   (flatten( self.comm.gather(self.top_nitems_dirs.get_list())))
-        self.top_nbytes_dirs.reset   (flatten( self.comm.gather(self.top_nbytes_dirs.get_list())))
-        self.top_nbytes_files.reset  (flatten( self.comm.gather(self.top_nbytes_files.get_list())))
-        self.oldest_mtime_dirs.reset (flatten( self.comm.gather(self.oldest_mtime_dirs.get_list())))
-        self.oldest_atime_dirs.reset (flatten( self.comm.gather(self.oldest_atime_dirs.get_list())))
-
-        self.st_modes   = self.gather_and_sum_dict(self.st_modes)
-        self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
-        self.uid_nbytes = self.gather_and_sum_dict(self.uid_nbytes)
-        self.gid_nitems = self.gather_and_sum_dict(self.gid_nitems)
-        self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
         sys.stdout.flush()
 
-        #--------------------------------------------------
-        if verbose:
-            for p in range(0,self.nranks):
-                self.comm.Barrier()
-                sys.stdout.flush()
-                if p == self.rank:
-                    if self.i_am_root:
-                        print(sep)
-                    else:
-                        print('rank {} / {}, found {:,} files, {:,} dirs'.format(self.rank, platform.node(),
-                                                                                 self.num_files, self.num_dirs))
-                        for k,v in self.st_modes.items():
-                            print('   {:5s} : {:,}'.format(k,v))
-                        print('   {:5s} : {}'.format('size',format_size(self.total_size)))
+        sep="-"*80
+
+        # print end message
+        for p in range(0,self.nranks):
+
+            # get stat keys from rank.
+            # Somehow broadcasting a set object seems to fail, so use a list
+            stat_keys.update( set(self.comm.bcast(list(self.st_modes.keys()), root=p)) )
+
+            self.comm.Barrier()
+            sys.stdout.flush()
+            if p == self.rank:
+                if self.i_am_root:
+                    print(sep)
+                else:
+                    print("rank {} / {}, found {} files, {} dirs".format(self.rank, platform.node(),
+                                                                         self.num_files, self.num_dirs))
+                    for k,v in self.st_modes.items():
+                        print("   {:5s} : {}".format(k,v))
+                    print("   {:.5e} bytes".format(self.file_size))
+
+
+        self.comm.Barrier()
+        sys.stdout.flush()
 
         if self.i_am_root:
-            # summarize uid/gid results
-            print(sep + '\nUser Sizes:\n' + sep)
-            for k,v in self.uid_nbytes.items():
-                try:
-                    username = pwd.getpwuid(k).pw_name
-                except KeyError:
-                    username = '{}*'.format(k)
-                print('{:>12} : {}'.format(username,format_size(v)))
-            print(sep + '\nUser Counts:\n' + sep)
-            for k,v in self.uid_nitems.items():
-                try:
-                    username = pwd.getpwuid(k).pw_name
-                except KeyError:
-                    username = '{}*'.format(k)
-                print('{:>12} : {}'.format(username,format_number(v)))
-            print(sep + '\nGroup Sizes:\n' + sep)
-            for k,v in self.gid_nbytes.items():
-                try:
-                    groupname = grp.getgrgid(k).gr_name
-                except KeyError:
-                    groupname = '{}*'.format(k)
-                print('{:>12} : {}'.format(groupname,format_size(v)))
-            print(sep + '\nGroup Counts:\n' + sep)
-            for k,v in self.gid_nitems.items():
-                try:
-                    groupname = grp.getgrgid(k).gr_name
-                except KeyError:
-                    groupname = '{}*'.format(k)
-                print('{:>12} : {}'.format(groupname,format_number(v)))
+            print(sep)
+            print("Totals of All Ranks:")
 
+        # important to go through common keys in sorted order so we are adding the
+        # same values
+        stat_keys=list(stat_keys)
+        stat_keys.sort()
+        for k in stat_keys:
+            summed_val = self.comm.allreduce(self.st_modes[k], MPI.SUM)
+            if self.i_am_root:
+                print("   {:5s} : {}".format(k, summed_val))
 
-            # summarize stat types
-            print('\n'+sep)
-            print('Total Count: {} items'.format(format_number(self.progress_counts[0])))
-            print('Total Size:  {}'.format(format_size(self.progress_sizes[0])))
-            print('Type Counts:')
-            for k,v in self.st_modes.items(): print('   {:5s} : {:,}'.format(k, v))
+        nfiles_tot = self.comm.allreduce(self.num_files, MPI.SUM)
+        ndirs_tot  = self.comm.allreduce(self.num_dirs,  MPI.SUM)
+        fsize_tot  = self.comm.allreduce(self.file_size, MPI.SUM)
 
-            # summarize top files & directories
-            print(sep + '\nTop Dirs (file count):\n' + sep)
-            for idx,de in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_number(de.nitems), format_size(de.nbytes), de.path))
-            print(sep + '\nTop Dirs (size):\n' + sep)
-            for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
-            print(sep + '\nTop Files (size):\n' + sep)
-            for idx,fe in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(fe.nbytes), fe.path))
-            print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
-            for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-                                                                                              format_size(de.nbytes), format_number(de.nitems), de.path))
-            print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
-            for idx,de in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_atime).strftime('%Y-%m-%d %H:%M:%S'),
-                                                                                               format_size(de.nbytes), format_number(de.nitems), de.path))
+        self.comm.Barrier()
+        sys.stdout.flush()
+        if self.i_am_root:
+            print("{}\nTotal found {} objects = {} files + {} dirs".format(sep,
+                                                                           nfiles_tot+ndirs_tot,
+                                                                           nfiles_tot,
+                                                                           ndirs_tot))
+            print("Total File Size = {:.5e} bytes".format(fsize_tot))
         return
