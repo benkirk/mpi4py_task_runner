@@ -13,12 +13,13 @@ from random import randint
 class Manager(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~
-    def __init__(self,dirs=None,options=None):
+    def __init__(self,options=None):
         MPIClass.__init__(self,options)
         self.iteration = 0
         self.nsends = 0
         self.nrecvs = 0
-        self.dirs = dirs
+        #self.dirs = dirs
+        self.dirs = self.options.dirs
         self.num_files = 0
         self.num_dirs = 0
         self.file_size = 0
@@ -49,15 +50,15 @@ class Manager(MPIClass):
         deltaprog = (curtime - self.progress_time)
 
         if not forceprint:
-            if deltaprog < 5.: return
+            if deltaprog < self.options.progress: return
 
         self.progress_time = curtime
         elapsed = (curtime - self.start_time)
         self.progress_counts[0] = 0
-        total_count = sum(self.progress_counts)
-        self.progress_counts[0] = total_count
         self.progress_sizes[0] = 0
+        total_count = sum(self.progress_counts)
         total_size = sum(self.progress_sizes)
+        self.progress_counts[0] = total_count
         self.progress_sizes[0] = total_size
         status = '[{}] Walked {} items / {} in {} ({} items/sec)'.format(datetime.now().isoformat(sep=' ', timespec='seconds'),
                                                                                           format_number(total_count),
