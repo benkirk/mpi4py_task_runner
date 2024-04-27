@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from mpi4py import MPI
-from mpiclass import MPIClass, DirEntry, FileEntry, format_number
+from mpiclass import MPIClass, DirEntry, FileEntry, format_number, UIDCounts, GIDCounts
 import os, sys, stat
 import shutil
 #import threading
@@ -60,10 +60,13 @@ class Worker(MPIClass):
                 self.num_items += 1
                 self.total_size += statinfo.st_size
 
-                self.uid_nitems[statinfo.st_uid] += 1
-                self.uid_nbytes[statinfo.st_uid] += statinfo.st_size
-                self.gid_nitems[statinfo.st_gid] += 1
-                self.gid_nbytes[statinfo.st_gid] += statinfo.st_size
+                self.uids[statinfo.st_uid].set_id(statinfo.st_uid)
+                self.uids[statinfo.st_uid].nitems += 1
+                self.uids[statinfo.st_uid].nbytes += statinfo.st_size
+
+                self.gids[statinfo.st_gid].set_id(statinfo.st_gid)
+                self.gids[statinfo.st_gid].nitems += 1
+                self.gids[statinfo.st_gid].nbytes += statinfo.st_size
 
                 # send a progress update periodically
                 # (in production we have many directories with 1M+ files, this ensures some progress is

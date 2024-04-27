@@ -55,6 +55,55 @@ class DirEntry(NamedTuple):
     max_ctime : float
     max_atime : float
 
+class IDCounts:
+    def __init__(self):
+        self.id = None
+        self.name = None
+        self.nbytes = 0
+        self.nitems = 0
+        return
+
+    def set_id(self,id_in):
+        if id_in != self.id:
+            self.id = id_in
+            self._id_to_name()
+        return
+
+    def _id_to_name(self):
+        assert False
+        return
+
+    def to_dict(self):
+        d = { 'name'   : self.name,
+              #'id'     : self.id,
+              'nbytes' : self.nbytes,
+              'nitems' : self.nitems }
+        return d
+
+class UIDCounts(IDCounts):
+    def __init__(self):
+        IDCounts.__init__(self)
+        return
+
+    def _id_to_name(self):
+        try:
+            self.name = pwd.getpwuid(self.id).pw_name
+        except KeyError:
+            self.name = '{}*'.format(self.id)
+        return
+
+class GIDCounts(IDCounts):
+    def __init__(self):
+        IDCounts.__init__(self)
+        return
+
+    def _id_to_name(self):
+        try:
+            self.name = grp.getgrgid(self.id).gr_name
+        except KeyError:
+            self.name = '{}*'.format(self.id)
+        return
+
 
 
 ################################################################################
@@ -84,11 +133,11 @@ class MPIClass:
         self.num_dirs = 0
         self.num_items = 0
         self.total_size = 0
+
         self.st_modes = defaultdict(int)
-        self.uid_nitems = defaultdict(int)
-        self.uid_nbytes = defaultdict(int)
-        self.gid_nitems = defaultdict(int)
-        self.gid_nbytes = defaultdict(int)
+
+        self.uids = defaultdict(UIDCounts)
+        self.gids = defaultdict(GIDCounts)
 
         self.top_nitems_dirs   = MaxHeap(self.options.heap_size)
         self.top_nbytes_dirs   = MaxHeap(self.options.heap_size)
@@ -158,6 +207,26 @@ class MPIClass:
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    def gather_and_sum_ids(self, my_part):
+        result = defaultdict(IDCounts)
+        parts = self.comm.gather(list(my_part.values()))
+        if parts:
+            for part in parts:
+                for obj in part:
+                    k = obj.id
+                    result[k].id = obj.id
+                    result[k].name = obj.name
+                    result[k].nbytes += obj.nbytes
+                    result[k].nitems += obj.nitems
+
+            # sort from largest-val-to-smallest
+            # https://stackoverflow.com/questions/613183/how-do-i-sort-a-dictionary-by-value
+            result = dict(sorted(result.items(), reverse=True, key=lambda item: item[1].nbytes))
+        return result
+
+
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def summary(self, verbose=False):
 
         self.comm.Barrier()
@@ -172,10 +241,14 @@ class MPIClass:
         self.oldest_atime_dirs.reset (flatten( self.comm.gather(self.oldest_atime_dirs.get_list())))
 
         self.st_modes   = self.gather_and_sum_dict(self.st_modes)
-        self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
-        self.uid_nbytes = self.gather_and_sum_dict(self.uid_nbytes)
-        self.gid_nitems = self.gather_and_sum_dict(self.gid_nitems)
-        self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
+        #self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
+        #self.uid_nbytes = self.gather_and_sum_dict(self.uid_nbytes)
+        #self.gid_nitems = self.gather_and_sum_dict(self.gid_nitems)
+        #self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
+
+        self.uids = self.gather_and_sum_ids(self.uids)
+        self.gids = self.gather_and_sum_ids(self.gids)
+
         sys.stdout.flush()
 
         #--------------------------------------------------
@@ -202,42 +275,18 @@ class MPIClass:
         # done with all colletive stuff
         # root rank summarizes results
 
-        print(sep + '\nUser Sizes:\n' + sep)
-        for k,v in self.uid_nbytes.items():
-            try:
-                username = pwd.getpwuid(k).pw_name
-            except KeyError:
-                username = '{}*'.format(k)
-            print('{:>12} : {}'.format(username,format_size(v)))
-        print(sep + '\nUser Counts:\n' + sep)
-        for k,v in self.uid_nitems.items():
-            try:
-                username = pwd.getpwuid(k).pw_name
-            except KeyError:
-                username = '{}*'.format(k)
-            print('{:>12} : {}'.format(username,format_number(v)))
-        print(sep + '\nGroup Sizes:\n' + sep)
-        for k,v in self.gid_nbytes.items():
-            try:
-                groupname = grp.getgrgid(k).gr_name
-            except KeyError:
-                groupname = '{}*'.format(k)
-            print('{:>12} : {}'.format(groupname,format_size(v)))
-        print(sep + '\nGroup Counts:\n' + sep)
-        for k,v in self.gid_nitems.items():
-            try:
-                groupname = grp.getgrgid(k).gr_name
-            except KeyError:
-                groupname = '{}*'.format(k)
-            print('{:>12} : {}'.format(groupname,format_number(v)))
-
-
         # summarize stat types
-        print('\n'+sep)
+        print(('\n'+sep)*3)
         print('Total Count: {} items'.format(format_number(self.progress_counts[0])))
         print('Total Size:  {}'.format(format_size(self.progress_sizes[0])))
         print('Type Counts:')
         for k,v in self.st_modes.items(): print('   {:5s} : {:,}'.format(k, v))
+
+        # summarize by uid/gid
+        print('\n' + sep + '\nUsers:\n' + sep)
+        for k,v in self.uids.items(): print('{:>12} : {:>10} {:>10}'.format(v.name,format_size(v.nbytes),format_number(v.nitems)))
+        print('\n' + sep + '\nGroups:\n' + sep)
+        for k,v in self.gids.items(): print('{:>12} : {:>10} {:>10}'.format(v.name,format_size(v.nbytes),format_number(v.nitems)))
 
         # summarize top files & directories
         print(sep + '\nTop Dirs (file count):\n' + sep)
@@ -246,6 +295,8 @@ class MPIClass:
         for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
         print(sep + '\nTop Files (size):\n' + sep)
         for idx,fe in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(fe.nbytes), fe.path))
+
+        # summarize oldest paths
         print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
         for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                                                                                           format_size(de.nbytes), format_number(de.nitems), de.path))
@@ -283,5 +334,17 @@ class MPIClass:
                 print(df)
                 df.to_excel(writer, sheet_name='Files', index=False)
                 del l, df
+
+                # UID counts
+                df = pd.DataFrame.from_records([id.to_dict() for id in self.uids.values()])
+                print(df)
+                df.to_excel(writer, sheet_name='Users', index=False)
+                del df
+
+                # GID counts
+                df = pd.DataFrame.from_records([id.to_dict() for id in self.gids.values()])
+                print(df)
+                df.to_excel(writer, sheet_name='Groups', index=False)
+                del df
 
         return
