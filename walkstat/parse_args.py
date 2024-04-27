@@ -26,6 +26,7 @@ def parse_options():
 
 
     parser.add_argument('-p', '--progress', type=int, default=5, help='Frequency to report progress (default:5 seconds, <=0 disables)')
+    parser.add_argument('-s', '--summary', default=None, help='Summary spreadsheet', type=str, required=False)
     parser.add_argument('-e', '--errors', default=None, help='Error log file name (default: stderr)', type=str, required=False)
     parser.add_argument('-v', '--verbose', action='store_true', help='Print detailed information')
     parser.add_argument('--heap-size', default=500, type=int, required=False, help='queue depth for tracking large files / directories')

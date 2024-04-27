@@ -193,56 +193,95 @@ class MPIClass:
                             print('   {:5s} : {:,}'.format(k,v))
                         print('   {:5s} : {}'.format('size',format_size(self.total_size)))
 
-        if self.i_am_root:
-            # summarize uid/gid results
-            print(sep + '\nUser Sizes:\n' + sep)
-            for k,v in self.uid_nbytes.items():
-                try:
-                    username = pwd.getpwuid(k).pw_name
-                except KeyError:
-                    username = '{}*'.format(k)
-                print('{:>12} : {}'.format(username,format_size(v)))
-            print(sep + '\nUser Counts:\n' + sep)
-            for k,v in self.uid_nitems.items():
-                try:
-                    username = pwd.getpwuid(k).pw_name
-                except KeyError:
-                    username = '{}*'.format(k)
-                print('{:>12} : {}'.format(username,format_number(v)))
-            print(sep + '\nGroup Sizes:\n' + sep)
-            for k,v in self.gid_nbytes.items():
-                try:
-                    groupname = grp.getgrgid(k).gr_name
-                except KeyError:
-                    groupname = '{}*'.format(k)
-                print('{:>12} : {}'.format(groupname,format_size(v)))
-            print(sep + '\nGroup Counts:\n' + sep)
-            for k,v in self.gid_nitems.items():
-                try:
-                    groupname = grp.getgrgid(k).gr_name
-                except KeyError:
-                    groupname = '{}*'.format(k)
-                print('{:>12} : {}'.format(groupname,format_number(v)))
+
+        #------------------------------
+        # done with all colletive stuff
+        if not self.i_am_root: return
+
+        #------------------------------
+        # done with all colletive stuff
+        # root rank summarizes results
+
+        print(sep + '\nUser Sizes:\n' + sep)
+        for k,v in self.uid_nbytes.items():
+            try:
+                username = pwd.getpwuid(k).pw_name
+            except KeyError:
+                username = '{}*'.format(k)
+            print('{:>12} : {}'.format(username,format_size(v)))
+        print(sep + '\nUser Counts:\n' + sep)
+        for k,v in self.uid_nitems.items():
+            try:
+                username = pwd.getpwuid(k).pw_name
+            except KeyError:
+                username = '{}*'.format(k)
+            print('{:>12} : {}'.format(username,format_number(v)))
+        print(sep + '\nGroup Sizes:\n' + sep)
+        for k,v in self.gid_nbytes.items():
+            try:
+                groupname = grp.getgrgid(k).gr_name
+            except KeyError:
+                groupname = '{}*'.format(k)
+            print('{:>12} : {}'.format(groupname,format_size(v)))
+        print(sep + '\nGroup Counts:\n' + sep)
+        for k,v in self.gid_nitems.items():
+            try:
+                groupname = grp.getgrgid(k).gr_name
+            except KeyError:
+                groupname = '{}*'.format(k)
+            print('{:>12} : {}'.format(groupname,format_number(v)))
 
 
-            # summarize stat types
-            print('\n'+sep)
-            print('Total Count: {} items'.format(format_number(self.progress_counts[0])))
-            print('Total Size:  {}'.format(format_size(self.progress_sizes[0])))
-            print('Type Counts:')
-            for k,v in self.st_modes.items(): print('   {:5s} : {:,}'.format(k, v))
+        # summarize stat types
+        print('\n'+sep)
+        print('Total Count: {} items'.format(format_number(self.progress_counts[0])))
+        print('Total Size:  {}'.format(format_size(self.progress_sizes[0])))
+        print('Type Counts:')
+        for k,v in self.st_modes.items(): print('   {:5s} : {:,}'.format(k, v))
 
-            # summarize top files & directories
-            print(sep + '\nTop Dirs (file count):\n' + sep)
-            for idx,de in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_number(de.nitems), format_size(de.nbytes), de.path))
-            print(sep + '\nTop Dirs (size):\n' + sep)
-            for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
-            print(sep + '\nTop Files (size):\n' + sep)
-            for idx,fe in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(fe.nbytes), fe.path))
-            print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
-            for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-                                                                                              format_size(de.nbytes), format_number(de.nitems), de.path))
-            print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
-            for idx,de in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_atime).strftime('%Y-%m-%d %H:%M:%S'),
+        # summarize top files & directories
+        print(sep + '\nTop Dirs (file count):\n' + sep)
+        for idx,de in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_number(de.nitems), format_size(de.nbytes), de.path))
+        print(sep + '\nTop Dirs (size):\n' + sep)
+        for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
+        print(sep + '\nTop Files (size):\n' + sep)
+        for idx,fe in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(fe.nbytes), fe.path))
+        print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
+        for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                                                                                          format_size(de.nbytes), format_number(de.nitems), de.path))
+        print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
+        for idx,de in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_atime).strftime('%Y-%m-%d %H:%M:%S'),
                                                                                                format_size(de.nbytes), format_number(de.nitems), de.path))
+
+        # write summary file, if requested
+        if self.options.summary:
+            print('\n --> Writing summary to {}'.format(self.options.summary))
+            import pandas as pd
+
+            with pd.ExcelWriter(self.options.summary) as writer:
+                # directories
+                l = []
+                for idx,de in self.top_nitems_dirs.top(self.options.heap_size): l.append(de)
+                for idx,de in self.top_nbytes_dirs.top(self.options.heap_size): l.append(de)
+                #for idx,de in self.oldest_mtime_dirs.top(self.options.heap_size): l.append(de)
+                #for idx,de in self.oldest_ctime_dirs.top(self.options.heap_size): l.append(de)
+                #for idx,de in self.oldest_atime_dirs.top(self.options.heap_size): l.append(de)
+                l = sorted(set(l), key = lambda x: x.nitems, reverse=True)
+                #for it in l: print(it)
+                df = pd.DataFrame(l)
+                for ts in ['max_mtime', 'max_ctime', 'max_atime']: df[ts] = pd.to_datetime(df[ts], unit='s')
+                print(df)
+                df.to_excel(writer, sheet_name='Directories', index=False)
+                del l, df
+
+                # files
+                l = []
+                for idx,fe in self.top_nbytes_files.top(self.options.heap_size): l.append(fe)
+                l = sorted(set(l), key = lambda x: x.nbytes, reverse=True)
+                df = pd.DataFrame(l)
+                for ts in ['mtime', 'ctime', 'atime']: df[ts] = pd.to_datetime(df[ts], unit='s')
+                print(df)
+                df.to_excel(writer, sheet_name='Files', index=False)
+                del l, df
+
         return

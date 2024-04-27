@@ -10,6 +10,7 @@ dependencies:
   - make
   - numpy
   - memory_profiler
+  - openpyxl
   - pandas
   - pyarrow
   - python=3.12
