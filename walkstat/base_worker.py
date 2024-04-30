@@ -4,6 +4,7 @@ from mpi4py import MPI
 from mpiclass import MPIClass, DirEntry, FileEntry, format_number, UIDCounts, GIDCounts
 import os, sys, stat
 import shutil
+import queue
 from typing import NamedTuple
 
 MAXDIRS_BEFORE_SEND = 200
@@ -15,6 +16,8 @@ class BaseWorker(MPIClass):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
+
+        self.queue = None
         return
 
 
@@ -117,6 +120,15 @@ class BaseWorker(MPIClass):
         except Exception as error:
             print('[{:3d}] Cannot scan: {}'.format(self.rank, error), file=sys.stderr)
             #print('cannot scan {}'.format(dirname), file=sys.stderr)
+
+        # if present, wait for our work queue to drain.
+        # note that since each rank is wholly responsible for a given directory,
+        # and our queue is populated by item count, we have not accounted yet for
+        # different item sizes and their impact on queue processing time.  By
+        # waiting here for our queue to drain we can more effectively load balance,
+        # rather than filling up the queue with items that may take a long time to
+        # process later.
+        if self.queue: self.queue.join()
 
         return
 

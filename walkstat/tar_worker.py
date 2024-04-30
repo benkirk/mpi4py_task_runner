@@ -87,7 +87,7 @@ class TarWorker(BaseWorker):
             # when we recieve a None item, that means time to go home...
             if item is None:
                 self.queue.task_done()
-                print('[{:3d}] *** work queue empty, terminating thread ***'.format(self.rank))
+                #print('[{:3d}] *** work queue empty, terminating thread ***'.format(self.rank))
                 assert self.queue.empty()
                 return
 
@@ -124,8 +124,8 @@ class TarWorker(BaseWorker):
 
         super().run()
 
-        print('[{:3d}] --> Done walking, waiting for work queue to drain ({:,} items remaining...)'.format(self.rank,
-                                                                                                           self.queue.qsize()))
+        #print('[{:3d}] Done walking, waiting for tar queue to drain ({:,} items remaining...)'.format(self.rank,
+        #                                                                                              self.queue.qsize()))
 
         # Done with MPI bits, tell our thread
         self.queue.put(None)

@@ -241,10 +241,6 @@ class MPIClass:
         self.oldest_atime_dirs.reset (flatten( self.comm.gather(self.oldest_atime_dirs.get_list())))
 
         self.st_modes   = self.gather_and_sum_dict(self.st_modes)
-        #self.uid_nitems = self.gather_and_sum_dict(self.uid_nitems)
-        #self.uid_nbytes = self.gather_and_sum_dict(self.uid_nbytes)
-        #self.gid_nitems = self.gather_and_sum_dict(self.gid_nitems)
-        #self.gid_nbytes = self.gather_and_sum_dict(self.gid_nbytes)
 
         self.uids = self.gather_and_sum_ids(self.uids)
         self.gids = self.gather_and_sum_ids(self.gids)
@@ -269,11 +265,8 @@ class MPIClass:
 
         #------------------------------
         # done with all colletive stuff
-        if not self.i_am_root: return
-
-        #------------------------------
-        # done with all colletive stuff
         # root rank summarizes results
+        if not self.i_am_root: return
 
         # summarize stat types
         print(('\n'+sep)*3)
@@ -289,27 +282,32 @@ class MPIClass:
         for k,v in self.gids.items(): print('{:>12} : {:>10} {:>10}'.format(v.name,format_size(v.nbytes),format_number(v.nitems)))
 
         # summarize top files & directories
-        print(sep + '\nTop Dirs (file count):\n' + sep)
+        print('\n' + sep + '\nLargest Dirs (file count):\n' + sep)
         for idx,de in self.top_nitems_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_number(de.nitems), format_size(de.nbytes), de.path))
-        print(sep + '\nTop Dirs (size):\n' + sep)
+        print('\n' + sep + '\nLargest Dirs (size):\n' + sep)
         for idx,de in self.top_nbytes_dirs.top(50): print('{:>10} {:>10} {}/'.format(format_size(de.nbytes), format_number(de.nitems), de.path))
-        print(sep + '\nTop Files (size):\n' + sep)
+        print('\n' + sep + '\nLargest Files (size):\n' + sep)
         for idx,fe in self.top_nbytes_files.top(50): print('{:>10} {}'.format(format_size(fe.nbytes), fe.path))
 
         # summarize oldest paths
-        print(sep + '\nOldest Dirs (contents mtimes):\n' + sep)
+        print('\n' + sep + '\nOldest Dirs (contents mtimes):\n' + sep)
         for idx,de in self.oldest_mtime_dirs.top(50): print('{} {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                                                                                           format_size(de.nbytes), format_number(de.nitems), de.path))
-        print(sep + '\nOldest Dirs (contents atimes):\n' + sep)
+        print('\n' + sep + '\nOldest Dirs (contents atimes):\n' + sep)
         for idx,de in self.oldest_atime_dirs.top(50): print('{}  {:>10} {:>10} {}/'.format(datetime.fromtimestamp(de.max_atime).strftime('%Y-%m-%d %H:%M:%S'),
                                                                                                format_size(de.nbytes), format_number(de.nitems), de.path))
 
         # write summary file, if requested
         if self.options.summary:
-            print('\n --> Writing summary to {}'.format(self.options.summary))
+            print('\n--> Writing summary to {}'.format(self.options.summary))
             import pandas as pd
 
-            with pd.ExcelWriter(self.options.summary) as writer:
+            sheet_prefix = '{} - '.format(self.options.summary_prefix) if self.options.summary_prefix else ''
+            mode = 'a' if os.path.exists(self.options.summary) else 'w'
+            if_sheet_exists = None if 'w' == mode else 'replace'
+
+            with pd.ExcelWriter(self.options.summary,
+                                mode=mode, if_sheet_exists=if_sheet_exists) as writer:
                 # directories
                 l = []
                 for idx,de in self.top_nitems_dirs.top(self.options.heap_size): l.append(de)
@@ -321,8 +319,9 @@ class MPIClass:
                 #for it in l: print(it)
                 df = pd.DataFrame(l)
                 for ts in ['max_mtime', 'max_ctime', 'max_atime']: df[ts] = pd.to_datetime(df[ts], unit='s')
-                print(df)
-                df.to_excel(writer, sheet_name='Directories', index=False)
+                df.drop(columns=['max_ctime'], inplace=True) # <-- don't report what will likely be confusing information
+                #print(df)
+                df.to_excel(writer, sheet_name=sheet_prefix+'Directories', index=False)
                 del l, df
 
                 # files
@@ -331,20 +330,21 @@ class MPIClass:
                 l = sorted(set(l), key = lambda x: x.nbytes, reverse=True)
                 df = pd.DataFrame(l)
                 for ts in ['mtime', 'ctime', 'atime']: df[ts] = pd.to_datetime(df[ts], unit='s')
-                print(df)
-                df.to_excel(writer, sheet_name='Files', index=False)
+                df.drop(columns=['ctime'], inplace=True) # <-- don't report what will likely be confusing information
+                #print(df)
+                df.to_excel(writer, sheet_name=sheet_prefix+'Files', index=False)
                 del l, df
 
                 # UID counts
                 df = pd.DataFrame.from_records([id.to_dict() for id in self.uids.values()])
-                print(df)
-                df.to_excel(writer, sheet_name='Users', index=False)
+                #print(df)
+                df.to_excel(writer, sheet_name=sheet_prefix+'Users', index=False)
                 del df
 
                 # GID counts
                 df = pd.DataFrame.from_records([id.to_dict() for id in self.gids.values()])
-                print(df)
-                df.to_excel(writer, sheet_name='Groups', index=False)
+                #print(df)
+                df.to_excel(writer, sheet_name=sheet_prefix+'Groups', index=False)
                 del df
 
         return
