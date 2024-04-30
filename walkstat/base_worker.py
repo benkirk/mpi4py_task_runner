@@ -4,23 +4,17 @@ from mpi4py import MPI
 from mpiclass import MPIClass, DirEntry, FileEntry, format_number, UIDCounts, GIDCounts
 import os, sys, stat
 import shutil
-#import threading
-#import queue
+from typing import NamedTuple
 
 MAXDIRS_BEFORE_SEND = 200
 PROGRESS_INCREMENT = 20000
 
 ################################################################################
-class Worker(MPIClass):
+class BaseWorker(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def __init__(self):
         MPIClass.__init__(self)
-
-        #self.queue = queue.Queue(maxsize=5000)
-        #self.t = threading.Thread(target=self.process_queue, daemon=True)
-        #self.t.start()
-
         return
 
 
@@ -89,7 +83,6 @@ class Worker(MPIClass):
                     elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
                     elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
                     elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
-                    #self.process_file(pathname, statinfo)
 
                     # track the *maximum mtime/ctime/atime for this directories contents (not the dir itself though)
                     thisdir_max_mtime = max(thisdir_max_mtime, statinfo.st_mtime)
@@ -101,6 +94,12 @@ class Worker(MPIClass):
 
                     # track the size & count of this file in our top heap
                     self.top_nbytes_files.add((statinfo.st_size, fe))
+
+                    # --------------------------------------------------------------------------
+                    # additional file processing - simply a placeholder stub for derived classes
+                    # to do additional work on this file.
+                    self.process_file(pathname, statinfo)
+                    #------------------------------------
 
 
             # track the size & count of this directory in our top heaps
@@ -116,7 +115,7 @@ class Worker(MPIClass):
 
 
         except Exception as error:
-            print('[{:3d}] {}'.format(self.rank, error), file=sys.stderr)
+            print('[{:3d}] Cannot scan: {}'.format(self.rank, error), file=sys.stderr)
             #print('cannot scan {}'.format(dirname), file=sys.stderr)
 
         return
@@ -125,24 +124,9 @@ class Worker(MPIClass):
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def process_file(self, filename, statinfo):
-        assert(False)
-        #return
-        ##print('[{:3d}](f) {}'.format(self.rank, filename))
-        #
-        #self.num_files += 1
-        #self.total_size += statinfo.st_size
-        #
-        ## decode file type
-        #fmode = statinfo.st_mode
-        #if   stat.S_ISREG(fmode):  self.st_modes['reg']   += 1
-        #elif stat.S_ISLNK(fmode):  self.st_modes['link']  += 1
-        #elif stat.S_ISBLK(fmode):  self.st_modes['block'] += 1
-        #elif stat.S_ISCHR(fmode):  self.st_modes['char']  += 1
-        #elif stat.S_ISFIFO(fmode): self.st_modes['fifo']  += 1
-        #elif stat.S_ISSOCK(fmode): self.st_modes['sock']  += 1
-        #elif stat.S_ISDIR(fmode):  assert False # huh??
-        #
-        #return
+        print('Not implemented!')
+        raise NotImplementedError
+        return
 
 
 
