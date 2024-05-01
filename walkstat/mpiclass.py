@@ -316,10 +316,10 @@ class MPIClass:
                 #for idx,de in self.oldest_ctime_dirs.top(self.options.heap_size): l.append(de)
                 #for idx,de in self.oldest_atime_dirs.top(self.options.heap_size): l.append(de)
                 l = sorted(set(l), key = lambda x: x.nitems, reverse=True)
-                #for it in l: print(it)
                 df = pd.DataFrame(l)
                 for ts in ['max_mtime', 'max_ctime', 'max_atime']: df[ts] = pd.to_datetime(df[ts], unit='s')
-                df.drop(columns=['max_ctime'], inplace=True) # <-- don't report what will likely be confusing information
+                df['size'] = df['nbytes'].apply(lambda x: format_size(x))
+                df = df[['path','nitems','size','nbytes','max_mtime','max_atime']] # <-- rearrange, drop ctime (don't report what will likely be confusing information)
                 #print(df)
                 df.to_excel(writer, sheet_name=sheet_prefix+'Directories', index=False)
                 del l, df
@@ -330,21 +330,85 @@ class MPIClass:
                 l = sorted(set(l), key = lambda x: x.nbytes, reverse=True)
                 df = pd.DataFrame(l)
                 for ts in ['mtime', 'ctime', 'atime']: df[ts] = pd.to_datetime(df[ts], unit='s')
-                df.drop(columns=['ctime'], inplace=True) # <-- don't report what will likely be confusing information
+                df['size'] = df['nbytes'].apply(lambda x: format_size(x))
+                df = df[['path','size','nbytes','mtime','atime']] # <-- rearrange, drop ctime (don't report what will likely be confusing information)
                 #print(df)
                 df.to_excel(writer, sheet_name=sheet_prefix+'Files', index=False)
                 del l, df
 
                 # UID counts
-                df = pd.DataFrame.from_records([id.to_dict() for id in self.uids.values()])
-                #print(df)
-                df.to_excel(writer, sheet_name=sheet_prefix+'Users', index=False)
-                del df
+                udf = pd.DataFrame.from_records([id.to_dict() for id in self.uids.values()])
+                udf['groupname'] = udf['name'].apply(lambda x: None)
+                udf.rename(columns={'name': 'username'},inplace=True)
+                udf['size'] = udf['nbytes'].apply(lambda x: format_size(x))
+                udf = udf[['username', 'groupname', 'size', 'nbytes', 'nitems']]
 
                 # GID counts
-                df = pd.DataFrame.from_records([id.to_dict() for id in self.gids.values()])
+                gdf = pd.DataFrame.from_records([id.to_dict() for id in self.gids.values()])
+                gdf['username'] = gdf['name'].apply(lambda x: None)
+                gdf.rename(columns={'name': 'groupname'},inplace=True)
+                gdf['size'] = gdf['nbytes'].apply(lambda x: format_size(x))
+                gdf = gdf[['username', 'groupname', 'size', 'nbytes', 'nitems']]
+
+                # combined sheet
+                df = pd.concat([udf,gdf],ignore_index=True)
                 #print(df)
-                df.to_excel(writer, sheet_name=sheet_prefix+'Groups', index=False)
-                del df
+                df.to_excel(writer, sheet_name=sheet_prefix+'Users & Groups', index=False)
+                del udf, gdf, df
+
+
+            # Ok, open the file and set some formatting
+            from openpyxl import Workbook, load_workbook
+            from openpyxl.utils.dataframe import dataframe_to_rows
+            from openpyxl.styles import Alignment, Font
+
+            wb = load_workbook(self.options.summary)
+            #print(wb.sheetnames)
+
+            for ws in wb.worksheets:
+                #print(ws)
+                ws.freeze_panes = 'A2'
+                # Iterate over all columns and adjust their widths
+                for column in ws.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    #print(column[0].value)
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(cell.value)
+
+                            cell.font = Font(name='Courier')
+
+                            if 'size' in column[0].value:
+                                cell.alignment = Alignment(horizontal='right')
+                            if 'nitems' in column[0].value:
+                                cell.number_format = '#,###'
+                            if 'time' in column[0].value:
+                                cell.number_format = 'yyyy-mm-dd h:mm:ss'
+
+                        except:
+                            pass
+
+                    adjusted_width = (max_length + 2) * 1.2
+
+                    ws.column_dimensions[column_letter].width = adjusted_width
+
+                    # special widths
+                    if 'time' in column[0].value:
+                        ws.column_dimensions[column_letter].width = 20
+                    elif 'path' in column[0].value:
+                        ws.column_dimensions[column_letter].width = min(adjusted_width,140)
+                    elif 'nbytes' in column[0].value:
+                        ws.column_dimensions[column_letter].hidden = True
+
+                    # column label formatting
+                    column[0].font = Font(bold=True, size=14)
+                    column[0].alignment = Alignment(horizontal='center')
+                    #column[0].value = column[0].value.replace('_',' ').title()
+
+            # Save the workbook
+            wb.save(self.options.summary)
+            print('--> Done at {}'.format(datetime.now().isoformat(sep=' ', timespec='seconds')))
 
         return
